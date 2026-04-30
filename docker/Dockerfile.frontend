@@ -1,0 +1,43 @@
+# Frontend Dockerfile - Multi-stage build
+FROM node:20-alpine as builder
+
+WORKDIR /app
+
+# Copy package files
+COPY frontend/package.json frontend/package-lock.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source
+COPY frontend .
+
+# Build
+RUN npm run build
+
+# Production stage
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install serve for production
+RUN npm install -g serve
+
+# Copy built application from builder
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+
+# Expose port
+EXPOSE 3000
+
+# Environment
+ENV NODE_ENV=production
+ENV NEXT_PUBLIC_API_URL=http://localhost:8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
+
+# Start application
+CMD ["npm", "start"]

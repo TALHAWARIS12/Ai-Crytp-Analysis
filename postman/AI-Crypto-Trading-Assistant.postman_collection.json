@@ -1,0 +1,315 @@
+{
+  "info": {
+    "_postman_id": "8b91e302-7222-4a98-b7b6-f5e74e68e9e7",
+    "name": "AI Crypto Trading Assistant - Full System Test",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "cursor-agent"
+  },
+  "item": [
+    {
+      "name": "0 - Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Health status is healthy', function () {",
+              "  pm.expect(body.status).to.eql('healthy');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 - Search Symbol",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/search?q={{searchQuery}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "search"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "{{searchQuery}}"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Symbols array exists', function () {",
+              "  pm.expect(body.symbols).to.be.an('array');",
+              "});",
+              "if (body.symbols && body.symbols.length > 0) {",
+              "  pm.environment.set('symbol', body.symbols[0]);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Get Price",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/price/{{symbol}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "price",
+            "{{symbol}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Price fields exist', function () {",
+              "  pm.expect(body).to.have.property('last');",
+              "  pm.expect(body).to.have.property('bid');",
+              "  pm.expect(body).to.have.property('ask');",
+              "});",
+              "if (body.last) {",
+              "  const entry = Number(body.last);",
+              "  pm.environment.set('entryPrice', entry);",
+              "  pm.environment.set('entryZoneLow', Number((entry * 0.995).toFixed(4)));",
+              "  pm.environment.set('entryZoneHigh', Number((entry * 1.005).toFixed(4)));",
+              "  pm.environment.set('target1', Number((entry * 1.02).toFixed(4)));",
+              "  pm.environment.set('target2', Number((entry * 1.04).toFixed(4)));",
+              "  pm.environment.set('stopLoss', Number((entry * 0.98).toFixed(4)));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Analyze Coin",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"symbol\": \"{{symbol}}\",\n  \"timeframes\": [\"15m\", \"1h\", \"4h\"]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/analyze",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "analyze"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Analysis response has trend and confidence', function () {",
+              "  pm.expect(body).to.have.property('trend');",
+              "  pm.expect(body).to.have.property('confidence');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Validate Strategy",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"symbol\": \"{{symbol}}\",\n  \"direction\": \"{{direction}}\",\n  \"timeframe\": \"{{timeframe}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/strategy",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "strategy"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Strategy response has status/confidence', function () {",
+              "  pm.expect(body).to.have.property('status');",
+              "  pm.expect(body).to.have.property('confidence');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Check Signal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"symbol\": \"{{symbol}}\",\n  \"direction\": \"{{direction}}\",\n  \"entry_price\": {{entryPrice}},\n  \"entry_zone_low\": {{entryZoneLow}},\n  \"entry_zone_high\": {{entryZoneHigh}},\n  \"targets\": [{{target1}}, {{target2}}],\n  \"stop_loss\": {{stopLoss}},\n  \"timeframe\": \"{{timeframe}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/checksignal",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "checksignal"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('Signal response has risk info', function () {",
+              "  pm.expect(body).to.have.property('risk_score');",
+              "  pm.expect(body).to.have.property('status');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "searchQuery",
+      "value": "BTC"
+    },
+    {
+      "key": "symbol",
+      "value": "BTC/USDT"
+    },
+    {
+      "key": "direction",
+      "value": "LONG"
+    },
+    {
+      "key": "timeframe",
+      "value": "4h"
+    },
+    {
+      "key": "entryPrice",
+      "value": "50000"
+    },
+    {
+      "key": "entryZoneLow",
+      "value": "49500"
+    },
+    {
+      "key": "entryZoneHigh",
+      "value": "50500"
+    },
+    {
+      "key": "target1",
+      "value": "51000"
+    },
+    {
+      "key": "target2",
+      "value": "52000"
+    },
+    {
+      "key": "stopLoss",
+      "value": "49000"
+    }
+  ]
+}

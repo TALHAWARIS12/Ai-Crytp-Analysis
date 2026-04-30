@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.env
+backend/venv/
+backend/.env
+
+# Node / Frontend
+node_modules/
+.next/
+frontend/.next/
+frontend/node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+backend/.pytest_cache/
+
+# Docker
+docker-compose.override.yml
+
+# Secrets / keys
+*.pem
+*.key

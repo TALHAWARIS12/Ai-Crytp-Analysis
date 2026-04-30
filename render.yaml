@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: ai-crypto-trading-backend
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GROK_API_KEY
+        sync: false
+      - key: GROK_MODEL
+        value: gemini-1.5-flash
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_PROXY
+        value: ""
+      - key: BACKEND_HOST
+        value: 0.0.0.0
+      - key: BACKEND_PORT
+        value: "8000"
+      - key: FRONTEND_URL
+        sync: false
+      - key: BACKEND_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ALGORITHM
+        value: HS256
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "False"
+      - key: RATE_LIMIT_ENABLED
+        value: "True"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "60"
+      - key: CACHE_ENABLED
+        value: "True"
+      - key: CACHE_TTL
+        value: "300"
+      - key: BINANCE_API_KEY
+        sync: false
+      - key: BINANCE_API_SECRET
+        sync: false

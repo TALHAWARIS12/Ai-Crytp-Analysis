@@ -1,0 +1,109 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: crypto-trading-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-tradinguser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-tradingpass}
+      POSTGRES_DB: ${DB_NAME:-crypto_trading_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-tradinguser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - crypto-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: crypto-trading-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - crypto-network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: crypto-trading-backend
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-tradinguser}:${DB_PASSWORD:-tradingpass}@postgres:5432/${DB_NAME:-crypto_trading_db}
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: 8000
+      BACKEND_URL: http://localhost:8000
+      FRONTEND_URL: http://localhost:3000
+      ENVIRONMENT: production
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app
+    networks:
+      - crypto-network
+    restart: unless-stopped
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: crypto-trading-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - crypto-network
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: crypto-trading-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - crypto-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  crypto-network:
+    driver: bridge
