@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     telegram_proxy: str = os.getenv("TELEGRAM_PROXY", "")
     binance_api_key: str = os.getenv("BINANCE_API_KEY", "")
     binance_api_secret: str = os.getenv("BINANCE_API_SECRET", "")
+    binance_api_proxy: str = os.getenv("BINANCE_API_PROXY", "")  # For geo-restricted locations
     
     # Server
     backend_host: str = os.getenv("BACKEND_HOST", "0.0.0.0")

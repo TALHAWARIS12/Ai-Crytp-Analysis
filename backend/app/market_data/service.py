@@ -26,9 +26,18 @@ class MarketDataService:
         exchange_config = {
             'enableRateLimit': True,
             'options': {
-                'defaultType': 'future'
+                'defaultType': 'future',
+                'fetchOHLCV': 'v3',
+                'fetchTicker': 'v3',
             }
         }
+        # Use proxy if available (for geo-restricted locations like Render)
+        proxy_url = settings.binance_api_proxy
+        if proxy_url:
+            exchange_config['httpProxy'] = proxy_url
+            exchange_config['httpsProxy'] = proxy_url
+            logger.info(f"Using Binance API proxy: {proxy_url}")
+        
         if has_real_credentials:
             exchange_config['apiKey'] = raw_key
             exchange_config['secret'] = raw_secret
@@ -40,7 +49,8 @@ class MarketDataService:
         error_msg = str(e)
         if "451" in error_msg or "restricted location" in error_msg.lower():
             if not self.is_restricted:
-                logger.error("🛑 LOCATION RESTRICTION: Binance is blocking your IP. Please use a VPN (UK/EU/Asia) to resolve this.")
+                logger.error("🛑 LOCATION RESTRICTION: Binance is blocking your IP (HTTP 451). This is common on Render.")
+                logger.error("SOLUTIONS: (1) Add BINANCE_API_PROXY env var, (2) Use VPN, (3) Switch providers")
                 self.is_restricted = True
             return True
         return False
@@ -117,7 +127,7 @@ class MarketDataService:
             return []
     
     async def get_ticker(self, symbol: str) -> Optional[Dict]:
-        """Get current ticker information"""
+        """Get current ticker information with CoinGecko fallback"""
         try:
             symbol = self._normalize_symbol(symbol)
             ticker = await self._with_retries(partial(self.exchange.fetch_ticker, symbol))
@@ -136,10 +146,66 @@ class MarketDataService:
             }
         
         except Exception as e:
+            if self.is_restricted:
+                logger.warning(f"Binance restricted, trying CoinGecko fallback for {symbol}")
+                return await self._get_ticker_coingecko(symbol)
+            
             if not await self._handle_api_error(e, symbol):
                 exc_type = type(e).__name__
                 exc_msg = str(e) if str(e) else repr(e)
                 logger.error(f"Error fetching ticker for {symbol}: [{exc_type}] {exc_msg}", exc_info=True)
+            return None
+    
+    async def _get_ticker_coingecko(self, symbol: str) -> Optional[Dict]:
+        """Fallback: Get ticker from CoinGecko (no IP restrictions)"""
+        try:
+            # Map symbols to CoinGecko IDs
+            coingecko_ids = {
+                'BTC/USDT': 'bitcoin',
+                'ETH/USDT': 'ethereum',
+                'SOL/USDT': 'solana',
+                'XRP/USDT': 'ripple',
+                'ADA/USDT': 'cardano',
+                'DOGE/USDT': 'dogecoin',
+                'MATIC/USDT': 'matic-network',
+                'BNB/USDT': 'binancecoin',
+            }
+            
+            coin_id = coingecko_ids.get(symbol)
+            if not coin_id:
+                logger.warning(f"CoinGecko mapping missing for {symbol}")
+                return None
+            
+            async with aiohttp.ClientSession() as session:
+                url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true"
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status != 200:
+                        logger.error(f"CoinGecko API error: {resp.status}")
+                        return None
+                    
+                    data = await resp.json()
+                    coin_data = data.get(coin_id, {})
+                    
+                    if not coin_data:
+                        return None
+                    
+                    price = coin_data.get('usd', 0)
+                    return {
+                        'symbol': symbol,
+                        'last': price,
+                        'bid': price * 0.999,  # Approximate bid
+                        'ask': price * 1.001,  # Approximate ask
+                        'high': price,  # CoinGecko doesn't provide 24h high
+                        'low': price,
+                        'volume': coin_data.get('usd_24h_vol', 0),
+                        'timestamp': int(datetime.utcnow().timestamp() * 1000),
+                        'change': coin_data.get('usd_24h_change', 0),
+                        'percentage': coin_data.get('usd_24h_change', 0),
+                        'source': 'coingecko'
+                    }
+        
+        except Exception as e:
+            logger.error(f"CoinGecko fallback failed for {symbol}: {str(e)}")
             return None
     
     async def get_order_book(self, symbol: str, limit: int = 20) -> Optional[Dict]:
