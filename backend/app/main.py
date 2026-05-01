@@ -5,6 +5,21 @@ from datetime import datetime
 import logging
 from typing import Dict
 import asyncio
+import socket
+
+_BOT_LOCK_SOCKET = None
+
+def acquire_bot_lock() -> bool:
+    """Acquire a socket port bind lock to ensure only one worker runs the Telegram bot."""
+    global _BOT_LOCK_SOCKET
+    try:
+        # Port 28312 is arbitrary, just needs to be unlikely to conflict
+        _BOT_LOCK_SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        _BOT_LOCK_SOCKET.bind(("127.0.0.1", 28312))
+        # Keep socket open as long as the process runs
+        return True
+    except OSError:
+        return False
 
 from app.core.config import settings
 from app.db.database import init_db, get_db
@@ -52,8 +67,11 @@ async def startup():
     
     # Start Telegram bot in the background
     if settings.telegram_bot_token and "your-" not in settings.telegram_bot_token:
-        asyncio.create_task(run_bot())
-        logger.info("Telegram bot task scheduled")
+        if acquire_bot_lock():
+            asyncio.create_task(run_bot())
+            logger.info("Telegram bot task scheduled on this worker")
+        else:
+            logger.info("Another worker is running the Telegram bot. Skipping on this instance.")
     else:
         logger.warning("Telegram bot token missing. Bot disabled.")
         

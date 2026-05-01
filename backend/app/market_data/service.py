@@ -77,6 +77,7 @@ class MarketDataService:
             exchange_config['apiKey'] = raw_key
             exchange_config['secret'] = raw_secret
         self.exchange = ccxt.binance(exchange_config)
+        self.kucoin_fallback = ccxt.kucoin({'enableRateLimit': True})
         self.is_restricted = False
         self.cache = price_cache
         self.coingecko_rate_limit_reset = 0  # Timestamp when rate limit resets
@@ -124,18 +125,13 @@ class MarketDataService:
         raise last_exc
     
     async def get_ohlcv(self, symbol: str, timeframe: str = '1h', limit: int = 200) -> List[Dict]:
-        """Fetch OHLCV candles from Binance Futures
+        """Fetch OHLCV candles from Binance Futures"""
+        symbol = self._normalize_symbol(symbol)
         
-        Args:
-            symbol: Trading pair (e.g., 'BTC/USDT')
-            timeframe: Candle timeframe ('1m', '5m', '15m', '1h', '4h', '1d')
-            limit: Number of candles to fetch
+        if self.is_restricted:
+            return await self._get_ohlcv_kucoin(symbol, timeframe, limit)
             
-        Returns:
-            List of candles with OHLCV data
-        """
         try:
-            symbol = self._normalize_symbol(symbol)
             if not self.exchange.has['fetchOHLCV']:
                 raise Exception("Exchange doesn't support OHLCV")
             ohlcv = await self._with_retries(
@@ -157,16 +153,45 @@ class MarketDataService:
             return result
         
         except Exception as e:
-            if not await self._handle_api_error(e, symbol):
-                exc_type = type(e).__name__
-                exc_msg = str(e) if str(e) else repr(e)
-                logger.error(f"Error fetching OHLCV for {symbol}: [{exc_type}] {exc_msg}", exc_info=True)
+            if await self._handle_api_error(e, symbol):
+                return await self._get_ohlcv_kucoin(symbol, timeframe, limit)
+                
+            exc_type = type(e).__name__
+            exc_msg = str(e) if str(e) else repr(e)
+            logger.error(f"Error fetching OHLCV for {symbol}: [{exc_type}] {exc_msg}", exc_info=True)
+            return []
+
+    async def _get_ohlcv_kucoin(self, symbol: str, timeframe: str, limit: int) -> List[Dict]:
+        """Fallback to KuCoin for OHLCV data if Binance is restricted"""
+        try:
+            # KuCoin uses the same symbol format for spot
+            ohlcv = await self._with_retries(
+                partial(self.kucoin_fallback.fetch_ohlcv, symbol, timeframe, limit=limit)
+            )
+            
+            result = []
+            for candle in ohlcv:
+                result.append({
+                    'timestamp': candle[0],
+                    'datetime': datetime.fromtimestamp(candle[0] / 1000),
+                    'open': candle[1],
+                    'high': candle[2],
+                    'low': candle[3],
+                    'close': candle[4],
+                    'volume': candle[5]
+                })
+            return result
+        except Exception as e:
+            logger.error(f"KuCoin fallback failed for OHLCV {symbol}: {str(e)}")
             return []
     
     async def get_ticker(self, symbol: str) -> Optional[Dict]:
         """Get current ticker information with CoinGecko fallback"""
+        symbol = self._normalize_symbol(symbol)
+        if self.is_restricted:
+            return await self._get_ticker_coingecko(symbol)
+            
         try:
-            symbol = self._normalize_symbol(symbol)
             ticker = await self._with_retries(partial(self.exchange.fetch_ticker, symbol))
             
             return {
@@ -295,8 +320,24 @@ class MarketDataService:
     
     async def get_order_book(self, symbol: str, limit: int = 20) -> Optional[Dict]:
         """Get order book data"""
+        symbol = self._normalize_symbol(symbol)
+        
+        if self.is_restricted:
+            # Fallback to KuCoin
+            try:
+                orderbook = await self._with_retries(
+                    partial(self.kucoin_fallback.fetch_order_book, symbol, limit=limit)
+                )
+                return {
+                    'bids': orderbook['bids'][:limit],
+                    'asks': orderbook['asks'][:limit],
+                    'timestamp': orderbook['timestamp']
+                }
+            except Exception as e:
+                logger.error(f"KuCoin order book fallback failed: {str(e)}")
+                return None
+                
         try:
-            symbol = self._normalize_symbol(symbol)
             orderbook = await self._with_retries(
                 partial(self.exchange.fetch_order_book, symbol, limit=limit)
             )
@@ -313,8 +354,11 @@ class MarketDataService:
     
     async def get_funding_rate(self, symbol: str) -> Optional[Dict]:
         """Get current funding rate (using CCXT for stability)"""
+        symbol = self._normalize_symbol(symbol)
+        if self.is_restricted:
+            return None  # Skip if restricted
+            
         try:
-            symbol = self._normalize_symbol(symbol)
             # CCXT fetch_funding_rate returns a standardized object
             data = await self._with_retries(partial(self.exchange.fetch_funding_rate, symbol))
             
@@ -334,8 +378,11 @@ class MarketDataService:
     
     async def get_open_interest(self, symbol: str) -> Optional[Dict]:
         """Get open interest data (using CCXT)"""
+        symbol = self._normalize_symbol(symbol)
+        if self.is_restricted:
+            return None  # Skip if restricted
+            
         try:
-            symbol = self._normalize_symbol(symbol)
             data = await self._with_retries(partial(self.exchange.fetch_open_interest, symbol))
             
             return {
@@ -383,8 +430,16 @@ class MarketDataService:
     
     async def validate_symbol(self, symbol: str) -> bool:
         """Validate if symbol exists and is tradeable"""
+        symbol = self._normalize_symbol(symbol)
+        
+        if self.is_restricted:
+            try:
+                await self._with_retries(self.kucoin_fallback.load_markets)
+                return symbol in self.kucoin_fallback.symbols
+            except:
+                return True # Optimistic fallback
+                
         try:
-            symbol = self._normalize_symbol(symbol)
             await self._with_retries(self.exchange.load_markets)
             return symbol in self.exchange.symbols
         except:
@@ -392,10 +447,11 @@ class MarketDataService:
     
     async def search_symbols(self, query: str) -> List[str]:
         """Search available trading pairs"""
+        exchange_to_use = self.kucoin_fallback if self.is_restricted else self.exchange
         try:
-            await self._with_retries(self.exchange.load_markets)
+            await self._with_retries(exchange_to_use.load_markets)
             query = query.upper()
-            return [s for s in self.exchange.symbols if query in s][:10]
+            return [s for s in exchange_to_use.symbols if query in s][:10]
         except:
             return []
 

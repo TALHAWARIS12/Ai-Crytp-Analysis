@@ -3,8 +3,8 @@ import { CoinAnalysis, StrategyValidation, SignalVerification } from '@/types/ma
 
 // Get base URL from environment, ensuring no double /api/v1 prefix
 const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-// Remove any trailing /api/v1 or similar patterns that might be in the URL
-const API_BASE_URL = rawUrl.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '')
+// Remove any trailing /api/v1 or similar patterns that might be in the URL (handles duplicates like /api/v1/api/v1)
+const API_BASE_URL = rawUrl.replace(/(?:\/api\/v1\/?)+$/, '').replace(/\/$/, '')
 
 // Create axios instance with base URL only (no /api/v1 in baseURL)
 const api = axios.create({
