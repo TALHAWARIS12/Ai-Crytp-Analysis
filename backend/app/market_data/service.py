@@ -10,6 +10,41 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Simple in-memory cache for CoinGecko data (TTL: 60 seconds)
+class PriceCache:
+    def __init__(self):
+        self.cache = {}
+        self.timestamps = {}
+    
+    def get(self, symbol: str) -> Optional[Dict]:
+        """Get cached price if fresh (< 60s old)"""
+        if symbol in self.cache:
+            age = (datetime.utcnow() - self.timestamps[symbol]).total_seconds()
+            if age < 60:  # Cache TTL: 60 seconds
+                return self.cache[symbol]
+            else:
+                del self.cache[symbol]
+                del self.timestamps[symbol]
+        return None
+    
+    def set(self, symbol: str, data: Dict):
+        """Cache price data"""
+        self.cache[symbol] = data
+        self.timestamps[symbol] = datetime.utcnow()
+    
+    def clear_old(self):
+        """Remove stale entries older than 2 minutes"""
+        now = datetime.utcnow()
+        symbols_to_remove = [
+            s for s, ts in self.timestamps.items() 
+            if (now - ts).total_seconds() > 120
+        ]
+        for s in symbols_to_remove:
+            del self.cache[s]
+            del self.timestamps[s]
+
+price_cache = PriceCache()
+
 class MarketDataService:
     """Production market data service using CCXT and Binance Futures API"""
     
@@ -43,6 +78,8 @@ class MarketDataService:
             exchange_config['secret'] = raw_secret
         self.exchange = ccxt.binance(exchange_config)
         self.is_restricted = False
+        self.cache = price_cache
+        self.coingecko_rate_limit_reset = 0  # Timestamp when rate limit resets
 
     async def _handle_api_error(self, e: Exception, symbol: str):
         """Handle specific API errors like location restrictions"""
@@ -157,8 +194,22 @@ class MarketDataService:
             return None
     
     async def _get_ticker_coingecko(self, symbol: str) -> Optional[Dict]:
-        """Fallback: Get ticker from CoinGecko (no IP restrictions)"""
+        """Fallback: Get ticker from CoinGecko (no IP restrictions, with caching and rate limit handling)"""
         try:
+            # Check cache first
+            cached = self.cache.get(symbol)
+            if cached:
+                logger.info(f"Using cached price for {symbol}")
+                return cached
+            
+            # Check if we're rate limited
+            now = datetime.utcnow().timestamp()
+            if now < self.coingecko_rate_limit_reset:
+                wait_time = int(self.coingecko_rate_limit_reset - now)
+                logger.warning(f"CoinGecko rate limit active, waiting {wait_time}s before retry")
+                await asyncio.sleep(min(wait_time + 1, 5))  # Wait but cap at 5s
+                self.coingecko_rate_limit_reset = 0
+            
             # Map symbols to CoinGecko IDs
             coingecko_ids = {
                 'BTC/USDT': 'bitcoin',
@@ -176,33 +227,67 @@ class MarketDataService:
                 logger.warning(f"CoinGecko mapping missing for {symbol}")
                 return None
             
-            async with aiohttp.ClientSession() as session:
-                url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true"
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status != 200:
-                        logger.error(f"CoinGecko API error: {resp.status}")
-                        return None
-                    
-                    data = await resp.json()
-                    coin_data = data.get(coin_id, {})
-                    
-                    if not coin_data:
-                        return None
-                    
-                    price = coin_data.get('usd', 0)
-                    return {
-                        'symbol': symbol,
-                        'last': price,
-                        'bid': price * 0.999,  # Approximate bid
-                        'ask': price * 1.001,  # Approximate ask
-                        'high': price,  # CoinGecko doesn't provide 24h high
-                        'low': price,
-                        'volume': coin_data.get('usd_24h_vol', 0),
-                        'timestamp': int(datetime.utcnow().timestamp() * 1000),
-                        'change': coin_data.get('usd_24h_change', 0),
-                        'percentage': coin_data.get('usd_24h_change', 0),
-                        'source': 'coingecko'
-                    }
+            # Retry logic with exponential backoff
+            for attempt in range(1, 4):  # 3 attempts
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd&include_market_cap=true&include_24hr_vol=true&include_24hr_change=true"
+                        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                            if resp.status == 429:  # Rate limited
+                                retry_after = int(resp.headers.get('Retry-After', 60))
+                                logger.warning(f"CoinGecko rate limit (attempt {attempt}/3): retry after {retry_after}s")
+                                self.coingecko_rate_limit_reset = datetime.utcnow().timestamp() + retry_after
+                                
+                                if attempt < 3:
+                                    await asyncio.sleep(min(retry_after, 5))
+                                    continue
+                                else:
+                                    return None
+                            
+                            elif resp.status != 200:
+                                logger.error(f"CoinGecko API error: {resp.status}")
+                                if attempt < 3:
+                                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                                    continue
+                                return None
+                            
+                            data = await resp.json()
+                            coin_data = data.get(coin_id, {})
+                            
+                            if not coin_data:
+                                return None
+                            
+                            price = coin_data.get('usd', 0)
+                            result = {
+                                'symbol': symbol,
+                                'last': price,
+                                'bid': price * 0.999,  # Approximate bid
+                                'ask': price * 1.001,  # Approximate ask
+                                'high': price,  # CoinGecko doesn't provide 24h high
+                                'low': price,
+                                'volume': coin_data.get('usd_24h_vol', 0),
+                                'timestamp': int(datetime.utcnow().timestamp() * 1000),
+                                'change': coin_data.get('usd_24h_change', 0),
+                                'percentage': coin_data.get('usd_24h_change', 0),
+                                'source': 'coingecko'
+                            }
+                            
+                            # Cache the result
+                            self.cache.set(symbol, result)
+                            return result
+                
+                except asyncio.TimeoutError:
+                    logger.warning(f"CoinGecko timeout (attempt {attempt}/3)")
+                    if attempt < 3:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                    return None
+                except Exception as e:
+                    logger.error(f"CoinGecko request error (attempt {attempt}/3): {str(e)}")
+                    if attempt < 3:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                    return None
         
         except Exception as e:
             logger.error(f"CoinGecko fallback failed for {symbol}: {str(e)}")
