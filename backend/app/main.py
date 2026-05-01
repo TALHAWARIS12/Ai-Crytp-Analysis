@@ -291,8 +291,12 @@ async def get_price(symbol: str) -> Dict:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Live market price unavailable from exchange"
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error fetching ticker for {symbol}: {str(e)}")
+        exc_type = type(e).__name__
+        exc_msg = str(e) if str(e) else repr(e)
+        logger.error(f"Error fetching ticker for {symbol}: [{exc_type}] {exc_msg}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Live market price unavailable from exchange"

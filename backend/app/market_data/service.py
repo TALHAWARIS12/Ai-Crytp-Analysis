@@ -4,6 +4,7 @@ import aiohttp
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
+import traceback
 from functools import partial
 from app.core.config import settings
 
@@ -70,6 +71,9 @@ class MarketDataService:
                 last_exc = exc
                 if attempt < attempts:
                     await asyncio.sleep(base_delay * attempt)
+                else:
+                    # Log full traceback on final failure
+                    logger.warning(f"All {attempts} attempts failed, raising exception: {type(exc).__name__}: {exc}")
         raise last_exc
     
     async def get_ohlcv(self, symbol: str, timeframe: str = '1h', limit: int = 200) -> List[Dict]:
@@ -107,7 +111,9 @@ class MarketDataService:
         
         except Exception as e:
             if not await self._handle_api_error(e, symbol):
-                logger.error(f"Error fetching OHLCV for {symbol}: {str(e)}")
+                exc_type = type(e).__name__
+                exc_msg = str(e) if str(e) else repr(e)
+                logger.error(f"Error fetching OHLCV for {symbol}: [{exc_type}] {exc_msg}", exc_info=True)
             return []
     
     async def get_ticker(self, symbol: str) -> Optional[Dict]:
@@ -131,7 +137,9 @@ class MarketDataService:
         
         except Exception as e:
             if not await self._handle_api_error(e, symbol):
-                logger.error(f"Error fetching ticker for {symbol}: {str(e)}")
+                exc_type = type(e).__name__
+                exc_msg = str(e) if str(e) else repr(e)
+                logger.error(f"Error fetching ticker for {symbol}: [{exc_type}] {exc_msg}", exc_info=True)
             return None
     
     async def get_order_book(self, symbol: str, limit: int = 20) -> Optional[Dict]:

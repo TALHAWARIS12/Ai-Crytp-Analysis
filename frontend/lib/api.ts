@@ -1,14 +1,18 @@
 import axios from 'axios'
 import { CoinAnalysis, StrategyValidation, SignalVerification } from '@/types/market'
 
+// Get base URL from environment, ensuring no double /api/v1 prefix
 const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const API_URL = rawUrl.replace(/\/api\/v1\/?$/, '')
+// Remove any trailing /api/v1 or similar patterns that might be in the URL
+const API_BASE_URL = rawUrl.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '')
 
+// Create axios instance with base URL only (no /api/v1 in baseURL)
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 })
 
 const normalizeSymbol = (symbol: string): string => {
