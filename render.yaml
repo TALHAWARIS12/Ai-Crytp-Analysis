@@ -2,7 +2,7 @@ services:
   - type: web
     name: ai-crypto-trading-backend
     runtime: python
-    region: oregon
+    region: frankfurt
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
