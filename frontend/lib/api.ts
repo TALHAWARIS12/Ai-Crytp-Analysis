@@ -1,7 +1,8 @@
 import axios from 'axios'
 import { CoinAnalysis, StrategyValidation, SignalVerification } from '@/types/market'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const rawUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = rawUrl.replace(/\/api\/v1\/?$/, '')
 
 const api = axios.create({
   baseURL: API_URL,
