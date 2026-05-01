@@ -121,7 +121,7 @@ class TelegramBot:
 📊 <b>TECHNICALS:</b>
 • EMA 8/34: {TelegramBot.format_price(data.get('ema8', 0))} / {TelegramBot.format_price(data.get('ema34', 0))}
 • RSI (14): {data.get('rsi', 'N/A')}
-• Funding: {data.get('funding_rate', {}).get('funding_rate_percent', 'N/A')}%
+• Funding: {(data.get('funding_rate') or {}).get('funding_rate_percent', 'N/A')}%
 
 🧠 <b>AI REASONING:</b>
 {data.get('analysis', 'Analysis unavailable')}
@@ -144,9 +144,9 @@ class TelegramBot:
 {chr(10).join("• " + r for r in data.get('reasons', [])[:5])}
 
 📉 <b>SETUP ZONES:</b>
-• <b>Entry:</b> {TelegramBot.format_price(data.get('entry_zones', {}).get('primary_zone', {}).get('low', 0)) if isinstance(data.get('entry_zones', {}).get('primary_zone'), dict) else 'N/A'}
-• <b>Take Profit:</b> {TelegramBot.format_price(data.get('exit_zones', {}).get('take_profit', 0)) if isinstance(data.get('exit_zones'), dict) else 'N/A'}
-• <b>Stop Loss:</b> {TelegramBot.format_price(data.get('exit_zones', {}).get('stop_loss', 0)) if isinstance(data.get('exit_zones'), dict) else 'N/A'}
+• <b>Entry:</b> {TelegramBot.format_price(((data.get('entry_zones') or {}).get('primary_zone') or {}).get('low', 0)) if isinstance((data.get('entry_zones') or {}).get('primary_zone'), dict) else 'N/A'}
+• <b>Take Profit:</b> {TelegramBot.format_price((data.get('exit_zones') or {}).get('take_profit', 0)) if isinstance(data.get('exit_zones'), dict) else 'N/A'}
+• <b>Stop Loss:</b> {TelegramBot.format_price((data.get('exit_zones') or {}).get('stop_loss', 0)) if isinstance(data.get('exit_zones'), dict) else 'N/A'}
 
 🧠 <b>EXPERT VIEW:</b>
 {data.get('ai_reasoning', 'Reasoning unavailable')}
