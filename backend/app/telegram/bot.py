@@ -113,6 +113,7 @@ class TelegramBot:
         volume = data.get('volume', {})
         order_flow = data.get('order_flow', {})
         mtf = data.get('mtf', {})
+        indicators = data.get('indicators', {})
         
         msg = f"""
 🏛 <b>INSTITUTIONAL ANALYSIS: {data['symbol']}</b>
@@ -120,7 +121,12 @@ class TelegramBot:
 💰 <b>PRICE:</b> {TelegramBot.format_price(data['current_price'])}
 🎯 <b>FINAL DECISION: {data['judgment']}</b>
 
-⏱ <b>MULTI-TIMEFRAME ANALYSIS:</b>"""
+📊 <b>TECHNICAL INDICATORS:</b>
+• <b>EMA 8/34:</b> {TelegramBot.format_price(indicators.get('ema8', 0))} / {TelegramBot.format_price(indicators.get('ema34', 0))}
+• <b>RSI (14):</b> {indicators.get('rsi', 'N/A')}
+• <b>MA 50/200:</b> {TelegramBot.format_price(indicators.get('sma50', 0))} / {TelegramBot.format_price(indicators.get('sma200', 0))}
+
+⏱ <b>MULTI-TIMEFRAME ANALYSIS:</b>""""""
         for tf in ['4h', '1h', '30m', '15m']:
             tf_data = mtf.get(tf, {})
             if tf_data:
@@ -159,19 +165,32 @@ class TelegramBot:
         """Format strategy validation into readable message"""
         status = data.get('status', 'INVALID')
         emoji = "✅" if "VALID" in status else "⏳" if "WAIT" in status else "❌"
+        mtf = data.get('mtf', {})
+        sr = data.get('sr', {})
+        liquidity = data.get('liquidity', {})
+        indicators = data.get('indicators', {})
         
         msg = f"""
-🛡 <b>STRATEGY VALIDATION: {data.get('symbol', 'Unknown')}</b>
+🛡 <b>STRATEGY REPORT: {data.get('symbol', 'Unknown')}</b>
 ────────────────────
 💰 <b>PRICE:</b> {TelegramBot.format_price(data.get('current_price', 0))}
 {emoji} <b>DECISION: {status}</b>
 
-{data.get('message', '')}
-{data.get('reason', '')}
-"""
-        if "VALID" in status or "WAIT" in status:
-            msg += f"""
-📝 <b>TECHNICAL CHECKLIST:</b>
+📊 <b>TECHNICAL INDICATORS:</b>
+• <b>EMA 8/34:</b> {TelegramBot.format_price(indicators.get('ema8', 0))} / {TelegramBot.format_price(indicators.get('ema34', 0))}
+• <b>RSI (14):</b> {indicators.get('rsi', 'N/A')}
+• <b>MA 50/200:</b> {TelegramBot.format_price(indicators.get('sma50', 0))} / {TelegramBot.format_price(indicators.get('sma200', 0))}
+
+⏱ <b>MULTI-TIMEFRAME ANALYSIS:</b>"""
+        for tf in ['4h', '1h', '30m', '15m']:
+            tf_data = mtf.get(tf, {})
+            if tf_data:
+                choch_str = f" | CHoCH: {tf_data.get('choch_type')}" if tf_data.get('choch_type') else ""
+                msg += f"\n• <b>{tf.upper()}</b>: {tf_data.get('trend')} | Struct: {tf_data.get('structure')} | {tf_data.get('bos')}{choch_str}"
+
+        msg += f"""
+
+📝 <b>STRATEGY CHECKLIST:</b>
 {chr(10).join("• " + r for r in data.get('reasons', [])[:5])}
 
 📉 <b>SETUP ZONES:</b>
@@ -179,10 +198,16 @@ class TelegramBot:
 • <b>Take Profit:</b> {TelegramBot.format_price((data.get('exit_zones') or {}).get('take_profit', 0)) if isinstance(data.get('exit_zones'), dict) else 'N/A'}
 • <b>Stop Loss:</b> {TelegramBot.format_price((data.get('exit_zones') or {}).get('stop_loss', 0)) if isinstance(data.get('exit_zones'), dict) else 'N/A'}
 
+🧱 <b>SUPPORT & RESISTANCE:</b>
+🟢 <b>Support:</b> {', '.join(TelegramBot.format_price(s) for s in sr.get('strong_support', [])[:2]) if sr.get('strong_support') else 'N/A'}
+🔴 <b>Resistance:</b> {', '.join(TelegramBot.format_price(r) for r in sr.get('strong_resistance', [])[:2]) if sr.get('strong_resistance') else 'N/A'}
+
+💧 <b>LIQUIDITY ZONES:</b>
+• <b>Buy-side:</b> {', '.join(liquidity.get('buy_side', [])) if liquidity.get('buy_side') else 'None detected'}
+• <b>Sell-side:</b> {', '.join(liquidity.get('sell_side', [])) if liquidity.get('sell_side') else 'None detected'}
+
 🧠 <b>EXPERT VIEW:</b>
 {data.get('ai_reasoning', 'Reasoning unavailable')}
-"""
-        msg += f"""
 ────────────────────
 <i>Powered by AI Trading Assistant</i>
         """
@@ -491,6 +516,14 @@ async def cmd_analyze(message: Message):
             }
             
             if tf == '4h':
+                # Indicators
+                analysis_data['indicators'] = {
+                    'ema8': ema8[-1],
+                    'ema34': ema34[-1],
+                    'sma50': sma50[-1],
+                    'sma200': sma200[-1],
+                    'rsi': TechnicalIndicators.rsi(close_prices, 14)[-1] if len(close_prices) > 14 else 'N/A'
+                }
                 # Advanced S&R
                 analysis_data['sr'] = TechnicalIndicators.support_resistance_advanced(high_prices, low_prices, close_prices)
                 
@@ -558,24 +591,85 @@ async def cmd_strategy(message: Message):
             await message.reply("Direction must be LONG or SHORT", parse_mode=ParseMode.HTML)
             return
         
-        await message.reply("🔄 Validating strategy...", parse_mode=ParseMode.HTML)
+        # ── Step 1: Perform Full Institutional Analysis ──
+        market_data = await market_data_service.get_full_market_snapshot(symbol)
+        mtf_data = await market_data_service.get_multi_timeframe_data(symbol, ['15m', '30m', '1h', '4h'])
         
-        # Fetch candles
-        candles = await market_data_service.get_ohlcv(symbol, timeframe, 100)
-        
-        if not candles or len(candles) < 50:
-            await message.reply("❌ Insufficient data", parse_mode=ParseMode.HTML)
+        if not market_data['candles']:
+            await message.reply("❌ Unable to fetch market data", parse_mode=ParseMode.HTML)
             return
+
+        from app.indicators.technical import TechnicalIndicators
         
-        # Validate
-        result = await StrategyValidator.validate_ema_crossover(symbol, candles, direction, timeframe)
-        zones = StrategyValidator.validate_setup_zones(candles, direction)
+        # Prepare full analysis data
+        analysis_data = {
+            'symbol': symbol,
+            'current_price': market_data['ticker']['last'] if market_data.get('ticker') else 0,
+            'funding_rate': market_data['funding_rate'],
+            'mtf': {},
+            'indicators': {},
+            'liquidity': {},
+            'volume': {},
+            'order_flow': {},
+            'judgment': 'WAIT',
+            'trend': 'NEUTRAL'
+        }
+
+        # Process all timeframes
+        for tf_val in ['15m', '30m', '1h', '4h']:
+            candles_tf = mtf_data.get(tf_val, [])
+            if not candles_tf: continue
+            
+            closes = [c['close'] for c in candles_tf]
+            highs = [c['high'] for c in candles_tf]
+            lows = [c['low'] for c in candles_tf]
+            
+            e8 = TechnicalIndicators.ema(closes, 8)
+            e34 = TechnicalIndicators.ema(closes, 34)
+            s50 = TechnicalIndicators.sma(closes, 50)
+            s200 = TechnicalIndicators.sma(closes, 200)
+            
+            struct = TechnicalIndicators.detect_structure(highs, lows, closes)
+            analysis_data['mtf'][tf_val] = {
+                'trend': TechnicalIndicators.trend_score(e8, e34, s50, s200, closes)['direction'],
+                'structure': struct['structure'],
+                'bos': f"BOS {struct['bos_direction']}" if struct['bos'] else "None",
+                'choch_type': struct.get('choch_type')
+            }
+            
+            if tf_val == '4h':
+                analysis_data['indicators'] = {
+                    'ema8': e8[-1], 'ema34': e34[-1], 'sma50': s50[-1], 'sma200': s200[-1],
+                    'rsi': TechnicalIndicators.rsi(closes, 14)[-1] if len(closes) > 14 else 'N/A'
+                }
+                analysis_data['sr'] = TechnicalIndicators.support_resistance_advanced(highs, lows, closes)
+                analysis_data['liquidity'] = TechnicalIndicators.detect_liquidity_zones(highs, lows)
+                analysis_data['volume'] = TechnicalIndicators.volume_analysis([c['volume'] for c in candles_tf], closes)
+
+        # Order Flow
+        analysis_data['order_flow'] = TechnicalIndicators.analyze_order_book(market_data.get('order_book', {}))
         
-        result['entry_zones'] = zones.get('entry_zones')
-        result['exit_zones'] = zones.get('exit_zones')
-        result['ai_reasoning'] = await AIReasoningEngine.validate_strategy_reasoning(result)
+        # ── Step 2: Validate Specific Strategy ──
+        target_candles = mtf_data.get(timeframe, [])
+        if not target_candles:
+             target_candles = await market_data_service.get_ohlcv(symbol, timeframe, 100)
+
+        strat_result = await StrategyValidator.validate_ema_crossover(symbol, target_candles, direction, timeframe)
+        zones = StrategyValidator.validate_setup_zones(target_candles, direction)
         
-        formatted = TelegramBot.format_strategy(result)
+        # Merge data
+        analysis_data.update({
+            'status': strat_result['status'],
+            'confidence': strat_result['confidence'],
+            'reasons': strat_result['reasons'],
+            'entry_zones': zones.get('entry_zones'),
+            'exit_zones': zones.get('exit_zones')
+        })
+        
+        # Get AI reasoning
+        analysis_data['ai_reasoning'] = await AIReasoningEngine.validate_strategy_reasoning(analysis_data)
+        
+        formatted = TelegramBot.format_strategy(analysis_data)
         await message.reply(formatted, parse_mode=ParseMode.HTML)
     
     except Exception as e:
