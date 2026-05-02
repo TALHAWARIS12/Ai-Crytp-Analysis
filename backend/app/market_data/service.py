@@ -107,6 +107,11 @@ class MarketDataService:
             if s.endswith(quote) and len(s) > len(quote):
                 base = s[:-len(quote)]
                 return f"{base}/{quote}"
+        
+        # Default to USDT for single words (e.g., BTC -> BTC/USDT)
+        if len(s) >= 2 and len(s) <= 10:
+            return f"{s}/USDT"
+            
         return s
 
     async def _with_retries(self, func, attempts: int = 3, base_delay: float = 0.4):
@@ -215,8 +220,33 @@ class MarketDataService:
             if not await self._handle_api_error(e, symbol):
                 exc_type = type(e).__name__
                 exc_msg = str(e) if str(e) else repr(e)
-                logger.error(f"Error fetching ticker for {symbol}: [{exc_type}] {exc_msg}", exc_info=True)
+                logger.error(f"Error fetching ticker for {symbol}: [{exc_type}] {exc_msg}")
             return None
+
+    async def get_top_gainers(self, limit: int = 10) -> List[Dict]:
+        """Fetch top gainers with fallback support"""
+        exchange_to_use = self.exchange
+        if self.is_restricted:
+            exchange_to_use = self.kucoin_fallback
+            
+        try:
+            await exchange_to_use.load_markets()
+            tickers = await self._with_retries(exchange_to_use.fetch_tickers)
+            
+            # Filter for USDT pairs and sort by percentage change
+            usdt_tickers = [t for s, t in tickers.items() if s.endswith('/USDT') or s.endswith('-USDT')]
+            sorted_tickers = sorted(
+                usdt_tickers, 
+                key=lambda x: x.get('percentage', 0) or 0, 
+                reverse=True
+            )[:limit]
+            
+            return sorted_tickers
+        except Exception as e:
+            if not self.is_restricted and await self._handle_api_error(e, "MARKET"):
+                return await self.get_top_gainers(limit)
+            logger.error(f"Error fetching top gainers: {e}")
+            return []
     
     async def _get_ticker_coingecko(self, symbol: str) -> Optional[Dict]:
         """Fallback: Get ticker from CoinGecko (no IP restrictions, with caching and rate limit handling)"""
@@ -245,6 +275,8 @@ class MarketDataService:
                 'DOGE/USDT': 'dogecoin',
                 'MATIC/USDT': 'matic-network',
                 'BNB/USDT': 'binancecoin',
+                'BTC': 'bitcoin',
+                'ETH': 'ethereum'
             }
             
             coin_id = coingecko_ids.get(symbol)

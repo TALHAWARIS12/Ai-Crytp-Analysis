@@ -284,14 +284,12 @@ async def cmd_topgainers(message: Message):
     """Handle /topgainers command"""
     try:
         await message.reply("🔄 Fetching top gainers...", parse_mode=ParseMode.HTML)
-        # Fetch from CCXT
-        await market_data_service.exchange.load_markets()
-        tickers = await market_data_service._with_retries(market_data_service.exchange.fetch_tickers)
+        sorted_tickers = await market_data_service.get_top_gainers(10)
         
-        # Filter for USDT pairs and sort by percentage change
-        usdt_tickers = [t for s, t in tickers.items() if s.endswith('/USDT')]
-        sorted_tickers = sorted(usdt_tickers, key=lambda x: x.get('percentage', 0) or 0, reverse=True)[:10]
-        
+        if not sorted_tickers:
+            await message.reply("❌ Error fetching top gainers. Market might be restricted.", parse_mode=ParseMode.HTML)
+            return
+
         msg = "<b>🔥 Top 10 Gainers (24h)</b>\n\n"
         for i, t in enumerate(sorted_tickers):
             change = t.get('percentage', 0) or 0
