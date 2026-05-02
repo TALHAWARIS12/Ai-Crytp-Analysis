@@ -126,7 +126,7 @@ class TelegramBot:
 • <b>RSI (14):</b> {indicators.get('rsi', 'N/A')}
 • <b>MA 50/200:</b> {TelegramBot.format_price(indicators.get('sma50', 0))} / {TelegramBot.format_price(indicators.get('sma200', 0))}
 
-⏱ <b>MULTI-TIMEFRAME ANALYSIS:</b>""""""
+⏱ <b>MULTI-TIMEFRAME ANALYSIS:</b>"""
         for tf in ['4h', '1h', '30m', '15m']:
             tf_data = mtf.get(tf, {})
             if tf_data:
