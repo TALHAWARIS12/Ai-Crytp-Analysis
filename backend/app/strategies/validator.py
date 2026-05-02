@@ -36,6 +36,7 @@ class StrategyValidator:
         """
         if len(candles) < 50:
             return {
+                'symbol': symbol,
                 'status': StrategyStatus.INVALID.value,
                 'message': 'Insufficient data for analysis',
                 'reason': 'Need at least 50 candles'

@@ -157,13 +157,20 @@ class TelegramBot:
     @staticmethod
     def format_strategy(data: dict) -> str:
         """Format strategy validation into readable message"""
-        status_emoji = "✅" if data['status'] == "VALID" else "⏳" if data['status'] == "WAIT" else "❌"
+        status = data.get('status', 'INVALID')
+        emoji = "✅" if "VALID" in status else "⏳" if "WAIT" in status else "❌"
+        
         msg = f"""
-🛡 <b>STRATEGY VALIDATION: {data['symbol']}</b>
+🛡 <b>STRATEGY VALIDATION: {data.get('symbol', 'Unknown')}</b>
 ────────────────────
-{status_emoji} <b>DECISION: {data['status']}</b>
-🎯 <b>Confidence:</b> {data.get('confidence', 0):.0f}%
+💰 <b>PRICE:</b> {TelegramBot.format_price(data.get('current_price', 0))}
+{emoji} <b>DECISION: {status}</b>
 
+{data.get('message', '')}
+{data.get('reason', '')}
+"""
+        if "VALID" in status or "WAIT" in status:
+            msg += f"""
 📝 <b>TECHNICAL CHECKLIST:</b>
 {chr(10).join("• " + r for r in data.get('reasons', [])[:5])}
 
@@ -174,18 +181,22 @@ class TelegramBot:
 
 🧠 <b>EXPERT VIEW:</b>
 {data.get('ai_reasoning', 'Reasoning unavailable')}
+"""
+        msg += f"""
 ────────────────────
+<i>Powered by AI Trading Assistant</i>
         """
         return msg.strip()
     
     @staticmethod
     def format_signal(data: dict) -> str:
         """Format signal verification into readable message"""
-        status_emoji = "✅" if data['status'] == "VALID" else "⏳" if data['status'] == "WAIT" else "❌"
+        status = data.get('status', 'AVOID')
+        status_emoji = "✅" if "VALID" in status else "⏳" if "WAIT" in status else "❌"
         msg = f"""
-📡 <b>SIGNAL VERIFICATION: {data['symbol']}</b>
+📡 <b>SIGNAL VERIFICATION: {data.get('symbol', 'Unknown')}</b>
 ────────────────────
-{status_emoji} <b>STATUS: {data['status']}</b>
+{status_emoji} <b>STATUS: {status}</b>
 ⚖ <b>RR Ratio:</b> {data.get('rr_ratio', 'N/A')}:1
 📊 <b>Risk Score:</b> {data['risk_score']:.0f}%
 📈 <b>Trend:</b> {data.get('trend_alignment', 'N/A')}

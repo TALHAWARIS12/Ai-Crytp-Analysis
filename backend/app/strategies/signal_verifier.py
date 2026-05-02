@@ -51,6 +51,7 @@ class SignalVerifier:
         
         if not candles or not ticker:
             return {
+                'symbol': symbol,
                 'status': SignalValidity.AVOID.value,
                 'reason': 'Unable to fetch market data',
                 'confidence': 0
