@@ -474,7 +474,7 @@ async def cmd_analyze(message: Message):
         
         analysis_data = {
             'symbol': symbol,
-            'current_price': market_data['ticker']['last'] if market_data.get('ticker') else 0,
+            'current_price': market_data['ticker']['last'] if (market_data.get('ticker') and market_data['ticker'].get('last')) else (market_data['candles'][-1]['close'] if market_data.get('candles') else 0),
             'funding_rate': market_data['funding_rate'],
             'mtf': {},
             'liquidity': {},

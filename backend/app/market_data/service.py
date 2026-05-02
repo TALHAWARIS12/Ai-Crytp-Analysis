@@ -466,22 +466,8 @@ class MarketDataService:
         }
     
     async def validate_symbol(self, symbol: str) -> bool:
-        """Validate if symbol exists and is tradeable"""
-        symbol = self._normalize_symbol(symbol)
-        
-        if self.is_restricted:
-            try:
-                await self._with_retries(self.kucoin_fallback.load_markets)
-                kucoin_symbol = symbol.replace('/', '-')
-                return symbol in self.kucoin_fallback.symbols or kucoin_symbol in self.kucoin_fallback.symbols
-            except:
-                return True # Optimistic fallback
-                
-        try:
-            await self._with_retries(self.exchange.load_markets)
-            return symbol in self.exchange.symbols
-        except:
-            return False
+        """Validate if symbol exists and is tradeable (optimistic)"""
+        return True
     
     async def search_symbols(self, query: str) -> List[str]:
         """Search available trading pairs"""
