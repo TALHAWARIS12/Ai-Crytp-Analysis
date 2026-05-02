@@ -2,6 +2,7 @@ from typing import Dict, List, Optional
 from enum import Enum
 import math
 from app.indicators.technical import TechnicalIndicators
+from app.market_data.service import market_data_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,10 +22,11 @@ class StrategyValidator:
         return isinstance(value, (int, float)) and not math.isnan(value)
     
     @staticmethod
-    async def validate_ema_crossover(candles: List[Dict], direction: str = "LONG", timeframe: str = "4h") -> Dict:
+    async def validate_ema_crossover(symbol: str, candles: List[Dict], direction: str = "LONG", timeframe: str = "4h") -> Dict:
         """Validate EMA 8/34 crossover strategy
         
         Args:
+            symbol: Trading pair symbol
             candles: OHLCV candles
             direction: LONG or SHORT
             timeframe: Trading timeframe

@@ -26,24 +26,20 @@ class AIReasoningEngine:
         try:
             # Build fact-based context for AI
             facts = f"""
-Based on real market data analysis:
+Based on real institutional market data:
 
 Symbol: {market_data.get('symbol')}
 Current Price: ${market_data.get('current_price', 'N/A')}
-Trend: {market_data.get('trend', 'Unknown')}
+Bias Judgment: {market_data.get('judgment', 'N/A')}
 
-Technical Setup:
-- EMA 8/34 Alignment: {market_data.get('ema_alignment', 'Unknown')}
-- Price vs MA200: {"Above (bullish)" if market_data.get('price_above_ma200') else "Below (bearish)"}
-- Support: ${market_data.get('support', 'N/A')}
-- Resistance: ${market_data.get('resistance', 'N/A')}
+Technical Analysis (Multi-Timeframe):
+{market_data.get('mtf')}
 
-Market Conditions:
-- Volume Strength: {market_data.get('volume_strength', 'Unknown')}
-- Funding Rate: {market_data.get('funding_rate', 'Normal')}
-- RSI: {market_data.get('rsi', 'N/A')}
-
-Analysis Type: {market_data.get('type', 'General')}
+Institutional Confluences:
+- Liquidity Zones: {market_data.get('liquidity')}
+- Volume Profile: {market_data.get('volume')}
+- Order Flow (Imbalance/Walls): {market_data.get('order_flow')}
+- Funding Rate: {market_data.get('funding_rate')}
 """
             
             prompt = f"""You are an elite institutional crypto trader with 15+ years experience.

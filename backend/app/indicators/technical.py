@@ -147,17 +147,23 @@ class TechnicalIndicators:
     
     @staticmethod
     def detect_structure(high: List[float], low: List[float], close: List[float]) -> Dict:
-        """Detect Market Structure (BOS, HHL)"""
-        if len(close) < 20:
-            return {"structure": "NEUTRAL", "bos": False}
+        """Detect Market Structure (BOS, CHoCH)"""
+        if len(close) < 30:
+            return {"structure": "NEUTRAL", "bos": False, "choch": False}
         
+        # Recent Swing Highs/Lows
         recent_high = max(high[-10:])
-        prev_high = max(high[-20:-10])
+        prev_high = max(high[-25:-10])
         recent_low = min(low[-10:])
-        prev_low = min(low[-20:-10])
+        prev_low = min(low[-25:-10])
         
+        # BOS: Break in trend direction
         bos_bullish = close[-1] > prev_high
         bos_bearish = close[-1] < prev_low
+        
+        # CHoCH: Change of Character (First counter-trend break)
+        choch_bullish = close[-1] > prev_high and close[-2] <= prev_high # Simplified
+        choch_bearish = close[-1] < prev_low and close[-2] >= prev_low # Simplified
         
         structure = "BULLISH" if (recent_high > prev_high and recent_low > prev_low) else \
                     "BEARISH" if (recent_high < prev_high and recent_low < prev_low) else "SIDEWAYS"
@@ -165,7 +171,9 @@ class TechnicalIndicators:
         return {
             "structure": structure,
             "bos": bos_bullish or bos_bearish,
-            "bos_direction": "UP" if bos_bullish else "DOWN" if bos_bearish else None
+            "bos_direction": "UP" if bos_bullish else "DOWN" if bos_bearish else None,
+            "choch": choch_bullish or choch_bearish,
+            "choch_type": "BULLISH" if choch_bullish else "BEARISH" if choch_bearish else None
         }
 
     @staticmethod
@@ -197,4 +205,134 @@ class TechnicalIndicators:
             'support': list(set(support_levels)),
             'primary_resistance': recent_high,
             'primary_support': recent_low
+        }
+
+    @staticmethod
+    def support_resistance_advanced(high: List[float], low: List[float], close: List[float], lookback: int = 50) -> Dict:
+        """Advanced cluster-based support/resistance"""
+        recent_high = max(high[-lookback:])
+        recent_low = min(low[-lookback:])
+        
+        # Simple clustering
+        def get_clusters(data, threshold=0.01):
+            sorted_data = sorted(data)
+            clusters = []
+            if not sorted_data: return clusters
+            curr_cluster = [sorted_data[0]]
+            for val in sorted_data[1:]:
+                if (val - curr_cluster[-1]) / curr_cluster[-1] <= threshold:
+                    curr_cluster.append(val)
+                else:
+                    clusters.append({'level': sum(curr_cluster)/len(curr_cluster), 'strength': len(curr_cluster)})
+                    curr_cluster = [val]
+            clusters.append({'level': sum(curr_cluster)/len(curr_cluster), 'strength': len(curr_cluster)})
+            return clusters
+
+        res_clusters = get_clusters([h for h in high[-lookback:] if h >= close[-1]])
+        sup_clusters = get_clusters([l for l in low[-lookback:] if l <= close[-1]])
+        
+        res_clusters = sorted(res_clusters, key=lambda x: x['strength'], reverse=True)
+        sup_clusters = sorted(sup_clusters, key=lambda x: x['strength'], reverse=True)
+        
+        return {
+            'strong_resistance': [c['level'] for c in res_clusters[:2]],
+            'weak_resistance': [c['level'] for c in res_clusters[2:4]],
+            'strong_support': [c['level'] for c in sup_clusters[:2]],
+            'weak_support': [c['level'] for c in sup_clusters[2:4]],
+            'primary_resistance': recent_high,
+            'primary_support': recent_low
+        }
+
+    @staticmethod
+    def detect_liquidity_zones(high: List[float], low: List[float], lookback: int = 50) -> Dict:
+        """Detect liquidity pools, equal highs/lows"""
+        if len(high) < lookback:
+            return {"buy_side": [], "sell_side": []}
+            
+        recent_highs = high[-lookback:]
+        recent_lows = low[-lookback:]
+        
+        # Equal highs (Buy-side liquidity)
+        max_high = max(recent_highs)
+        eqh = [h for h in recent_highs if max_high * 0.998 <= h <= max_high * 1.002]
+        
+        # Equal lows (Sell-side liquidity)
+        min_low = min(recent_lows)
+        eql = [l for l in recent_lows if min_low * 0.998 <= l <= min_low * 1.002]
+        
+        buy_side = []
+        if len(eqh) >= 2:
+            buy_side.append(f"Above {max_high:.2f} (Equal Highs)")
+        else:
+            buy_side.append(f"Above {max_high:.2f} (Swing High)")
+            
+        sell_side = []
+        if len(eql) >= 2:
+            sell_side.append(f"Below {min_low:.2f} (Equal Lows)")
+        else:
+            sell_side.append(f"Below {min_low:.2f} (Swing Low)")
+            
+        return {
+            "buy_side": buy_side,
+            "sell_side": sell_side
+        }
+
+    @staticmethod
+    def volume_analysis(volume: List[float], close: List[float]) -> Dict:
+        """Analyze volume profile"""
+        if len(volume) < 20:
+            return {"status": "Normal", "multiplier": 1.0, "buyers_active": False}
+            
+        recent_vol = volume[-1]
+        avg_vol = sum(volume[-20:-1]) / 19 if sum(volume[-20:-1]) > 0 else 1
+        multiplier = recent_vol / avg_vol
+        
+        close_change = close[-1] - close[-2]
+        buyers_active = close_change > 0 and multiplier > 1.2
+        sellers_active = close_change < 0 and multiplier > 1.2
+        
+        if multiplier > 2.0:
+            status = "Volume Spike"
+        elif multiplier > 1.2:
+            status = "Above Average"
+        elif multiplier < 0.8:
+            status = "Below Average"
+        else:
+            status = "Average"
+            
+        return {
+            "status": status,
+            "multiplier": multiplier,
+            "buyers_active": buyers_active,
+            "sellers_active": sellers_active,
+            "message": f"{status} ({'buyers active' if buyers_active else 'sellers active' if sellers_active else 'neutral'})"
+        }
+
+    @staticmethod
+    def analyze_order_book(orderbook: Dict) -> Dict:
+        """Analyze Binance order book for order flow"""
+        if not orderbook or not orderbook.get('bids') or not orderbook.get('asks'):
+            return {"strong_bids": [], "heavy_asks": []}
+            
+        bids = orderbook['bids']
+        asks = orderbook['asks']
+        
+        # Calculate total depth volume
+        total_bid_vol = sum(bid[1] for bid in bids)
+        total_ask_vol = sum(ask[1] for ask in asks)
+        
+        strong_bids = []
+        for price, vol in bids[:15]:
+            if vol > (total_bid_vol / len(bids)) * 2: # 2x average size
+                strong_bids.append(price)
+                
+        heavy_asks = []
+        for price, vol in asks[:15]:
+            if vol > (total_ask_vol / len(asks)) * 2: # 2x average size
+                heavy_asks.append(price)
+                
+        return {
+            "strong_bids": strong_bids,
+            "heavy_asks": heavy_asks,
+            "imbalance": "BUY" if total_bid_vol > total_ask_vol * 1.2 else "SELL" if total_ask_vol > total_bid_vol * 1.2 else "NEUTRAL"
         }

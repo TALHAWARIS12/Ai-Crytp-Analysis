@@ -108,20 +108,44 @@ class TelegramBot:
     @staticmethod
     def format_analysis(data: dict) -> str:
         """Format analysis into readable Telegram message"""
+        sr = data.get('sr', {})
+        liquidity = data.get('liquidity', {})
+        volume = data.get('volume', {})
+        order_flow = data.get('order_flow', {})
+        mtf = data.get('mtf', {})
+        
         msg = f"""
 🏛 <b>INSTITUTIONAL ANALYSIS: {data['symbol']}</b>
 ────────────────────
 💰 <b>PRICE:</b> {TelegramBot.format_price(data['current_price'])}
-📈 <b>TREND:</b> {data['trend']} (Score: {data.get('confidence', 0):.0f}%)
-────────────────────
-🎯 <b>KEY LEVELS:</b>
-🔴 <b>Resistance:</b> {', '.join(TelegramBot.format_price(r) for r in data.get('resistance', [])[:2])}
-🟢 <b>Support:</b> {', '.join(TelegramBot.format_price(s) for s in data.get('support', [])[:2])}
+🎯 <b>FINAL DECISION: {data['judgment']}</b>
 
-📊 <b>TECHNICALS:</b>
-• EMA 8/34: {TelegramBot.format_price(data.get('ema8', 0))} / {TelegramBot.format_price(data.get('ema34', 0))}
-• RSI (14): {data.get('rsi', 'N/A')}
-• Funding: {(data.get('funding_rate') or {}).get('funding_rate_percent', 'N/A')}%
+⏱ <b>MULTI-TIMEFRAME ANALYSIS:</b>"""
+        for tf in ['4h', '1h', '30m', '15m']:
+            tf_data = mtf.get(tf, {})
+            if tf_data:
+                choch_str = f" | CHoCH: {tf_data.get('choch_type')}" if tf_data.get('choch_type') else ""
+                msg += f"\n• <b>{tf.upper()}</b>: {tf_data.get('trend')} | Struct: {tf_data.get('structure')} | {tf_data.get('bos')}{choch_str}"
+
+        msg += f"""
+
+🧱 <b>SUPPORT & RESISTANCE:</b>
+🔴 <b>Strong Res:</b> {', '.join(TelegramBot.format_price(r) for r in sr.get('strong_resistance', [])[:2]) if sr.get('strong_resistance') else 'N/A'}
+🔸 <b>Weak Res:</b> {', '.join(TelegramBot.format_price(r) for r in sr.get('weak_resistance', [])[:2]) if sr.get('weak_resistance') else 'N/A'}
+🟢 <b>Strong Sup:</b> {', '.join(TelegramBot.format_price(s) for s in sr.get('strong_support', [])[:2]) if sr.get('strong_support') else 'N/A'}
+🔹 <b>Weak Sup:</b> {', '.join(TelegramBot.format_price(s) for s in sr.get('weak_support', [])[:2]) if sr.get('weak_support') else 'N/A'}
+
+💧 <b>LIQUIDITY ZONES:</b>
+• <b>Buy-side:</b> {', '.join(liquidity.get('buy_side', []))}
+• <b>Sell-side:</b> {', '.join(liquidity.get('sell_side', []))}
+
+📊 <b>VOLUME ANALYSIS:</b>
+• {volume.get('message', 'N/A')}
+
+🌊 <b>ORDER FLOW:</b>
+• <b>Imbalance:</b> {order_flow.get('imbalance', 'N/A')}
+• <b>Strong Bids:</b> {', '.join(TelegramBot.format_price(b) for b in order_flow.get('strong_bids', [])[:2]) if order_flow.get('strong_bids') else 'None'}
+• <b>Heavy Asks:</b> {', '.join(TelegramBot.format_price(a) for a in order_flow.get('heavy_asks', [])[:2]) if order_flow.get('heavy_asks') else 'None'}
 
 🧠 <b>AI REASONING:</b>
 {data.get('analysis', 'Analysis unavailable')}
@@ -403,43 +427,89 @@ async def cmd_analyze(message: Message):
             return
         
         # Fetch market data
-        await message.reply("🔄 Analyzing...", parse_mode=ParseMode.HTML)
+        await message.reply("🔄 Performing Institutional Analysis...", parse_mode=ParseMode.HTML)
         
         market_data = await market_data_service.get_full_market_snapshot(symbol)
+        mtf_data = await market_data_service.get_multi_timeframe_data(symbol, ['15m', '30m', '1h', '4h'])
         
         if not market_data['candles']:
             await message.reply("❌ Unable to fetch market data", parse_mode=ParseMode.HTML)
             return
-        
-        # Analyze
+            
         from app.indicators.technical import TechnicalIndicators
-        
-        candles_4h = market_data['candles'].get('4h', [])
-        close_prices = [c['close'] for c in candles_4h]
-        high_prices = [c['high'] for c in candles_4h]
-        low_prices = [c['low'] for c in candles_4h]
-        
-        ema8 = TechnicalIndicators.ema(close_prices, 8)
-        ema34 = TechnicalIndicators.ema(close_prices, 34)
-        sma50 = TechnicalIndicators.sma(close_prices, 50)
-        sma200 = TechnicalIndicators.sma(close_prices, 200)
-        rsi = TechnicalIndicators.rsi(close_prices, 14)
-        sr = TechnicalIndicators.support_resistance(high_prices, low_prices)
-        trend_score = TechnicalIndicators.trend_score(ema8, ema34, sma50, sma200, close_prices)
         
         analysis_data = {
             'symbol': symbol,
-            'current_price': close_prices[-1],
-            'trend': trend_score['direction'],
-            'confidence': trend_score['bullish_score'] * 100,
-            'support': sr['support'],
-            'resistance': sr['resistance'],
-            'ema8': ema8[-1],
-            'ema34': ema34[-1],
-            'rsi': rsi[-1] if rsi else None,
+            'current_price': market_data['ticker']['last'] if market_data.get('ticker') else 0,
             'funding_rate': market_data['funding_rate'],
-            'analysis': ''
+            'mtf': {},
+            'liquidity': {},
+            'volume': {},
+            'order_flow': {},
+            'judgment': 'WAIT',
+            'trend': 'NEUTRAL',
+            'support': 0,
+            'resistance': 0
         }
+        
+        # Multi-timeframe processing
+        for tf in ['15m', '30m', '1h', '4h']:
+            candles = mtf_data.get(tf, [])
+            if not candles: continue
+            
+            close_prices = [c['close'] for c in candles]
+            high_prices = [c['high'] for c in candles]
+            low_prices = [c['low'] for c in candles]
+            
+            ema8 = TechnicalIndicators.ema(close_prices, 8)
+            ema34 = TechnicalIndicators.ema(close_prices, 34)
+            sma50 = TechnicalIndicators.sma(close_prices, 50)
+            sma200 = TechnicalIndicators.sma(close_prices, 200)
+            
+            trend_score = TechnicalIndicators.trend_score(ema8, ema34, sma50, sma200, close_prices)
+            structure = TechnicalIndicators.detect_structure(high_prices, low_prices, close_prices)
+            
+            analysis_data['mtf'][tf] = {
+                'trend': trend_score['direction'],
+                'structure': structure['structure'],
+                'bos': f"BOS {structure['bos_direction']}" if structure['bos'] else "None",
+                'choch': structure.get('choch'),
+                'choch_type': structure.get('choch_type')
+            }
+            
+            if tf == '4h':
+                # Advanced S&R
+                analysis_data['sr'] = TechnicalIndicators.support_resistance_advanced(high_prices, low_prices, close_prices)
+                
+                # Liquidity
+                analysis_data['liquidity'] = TechnicalIndicators.detect_liquidity_zones(high_prices, low_prices)
+                
+                # Volume
+                volumes = [c['volume'] for c in candles]
+                analysis_data['volume'] = TechnicalIndicators.volume_analysis(volumes, close_prices)
+                
+                # Backwards compatibility for AI reasoning
+                analysis_data['trend'] = trend_score['direction']
+                analysis_data['support'] = analysis_data['sr']['primary_support']
+                analysis_data['resistance'] = analysis_data['sr']['primary_resistance']
+                
+                # Calculate final judgment bias
+                bullish_count = sum(1 for data in analysis_data['mtf'].values() if data['trend'] == 'BULLISH')
+                bearish_count = sum(1 for data in analysis_data['mtf'].values() if data['trend'] == 'BEARISH')
+                
+                if bullish_count >= 3 and analysis_data['volume']['buyers_active']:
+                    analysis_data['judgment'] = 'LONG BIAS'
+                elif bearish_count >= 3 and analysis_data['volume']['sellers_active']:
+                    analysis_data['judgment'] = 'SHORT BIAS'
+                elif bullish_count >= 3:
+                    analysis_data['judgment'] = 'WEAK LONG'
+                elif bearish_count >= 3:
+                    analysis_data['judgment'] = 'WEAK SHORT'
+                else:
+                    analysis_data['judgment'] = 'WAIT / AVOID'
+
+        # Order Flow Analysis
+        analysis_data['order_flow'] = TechnicalIndicators.analyze_order_book(market_data.get('order_book', {}))
         
         # Get AI analysis
         analysis_data['analysis'] = await AIReasoningEngine.analyze_coin(analysis_data)
@@ -483,7 +553,7 @@ async def cmd_strategy(message: Message):
             return
         
         # Validate
-        result = await StrategyValidator.validate_ema_crossover(candles, direction, timeframe)
+        result = await StrategyValidator.validate_ema_crossover(symbol, candles, direction, timeframe)
         zones = StrategyValidator.validate_setup_zones(candles, direction)
         
         result['entry_zones'] = zones.get('entry_zones')
@@ -545,14 +615,17 @@ async def handle_signal_input(message: Message):
                 return
         
         # Parse signal format
-        lines = text.split('\n')
-        if len(lines) < 4:
-            return  # Not a signal format
+        # Relaxed check: at least 3 lines or enough keywords
+        if len(text.split('\n')) < 2 and not any(k in text.upper() for k in ["BUY", "SELL", "LONG", "SHORT", "TP", "SL"]):
+            return  # Probably just a chat message
         
         # Parse signal format using robust parser
         parsed = signal_parser.parse(text)
         if not parsed:
-            return # Not a signal format, ignore
+            # Check if it was an attempt at a command that we should help with
+            if len(text.split()) == 1 and len(text) < 10:
+                await message.reply(f"I didn't recognize that signal. If you want to analyze {text.upper()}, use <code>/analyze {text.upper()}</code>", parse_mode=ParseMode.HTML)
+            return
             
         symbol = TelegramBot.normalize_symbol(parsed['symbol'])
         direction = parsed['direction']

@@ -207,6 +207,7 @@ async def validate_strategy(request: StrategyRequest) -> Dict:
         
         # Validate strategy
         result = await StrategyValidator.validate_ema_crossover(
+            request.symbol,
             candles,
             direction=request.direction,
             timeframe=request.timeframe
