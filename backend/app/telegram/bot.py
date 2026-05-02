@@ -228,6 +228,10 @@ class TelegramBot:
     @staticmethod
     def parse_natural_language(text: str):
         content = text.strip().upper()
+        # Avoid matching multi-line inputs as natural language commands
+        if '\n' in text.strip():
+            return None
+            
         m = re.search(r"(?:ANALYZE|ANALYSIS)\s+([A-Z0-9/_-]+)", content)
         if m:
             return ("analyze", TelegramBot.normalize_symbol(m.group(1)))
@@ -613,6 +617,46 @@ async def handle_signal_input(message: Message):
         if not text:
             return
 
+        # 1. First, check if it's a structured trading signal (Highest priority)
+        if len(text.split('\n')) >= 2 or any(k in text.upper() for k in ["ENTRY:", "TP:", "SL:", "TARGET:"]):
+            parsed = signal_parser.parse(text)
+            if parsed:
+                symbol = TelegramBot.normalize_symbol(parsed['symbol'])
+                direction = parsed['direction']
+                
+                # Get ticker for current price
+                ticker = await market_data_service.get_ticker(symbol)
+                if not ticker:
+                    await message.reply(f"❌ Symbol not found: {symbol}", parse_mode=ParseMode.HTML)
+                    return
+                
+                await message.reply("🔄 Checking signal against live institutional data...", parse_mode=ParseMode.HTML)
+                
+                # Verify
+                result = await SignalVerifier.verify_signal(
+                    symbol=symbol,
+                    direction=direction,
+                    entry_price=parsed['entry_price'],
+                    entry_zone_low=parsed['entry_price'] * 0.995,
+                    entry_zone_high=parsed['entry_price'] * 1.005,
+                    targets=parsed['targets'],
+                    stop_loss=parsed['stop_loss'],
+                    current_price=ticker['last'],
+                    timeframe='4h'
+                )
+                
+                result['ai_reasoning'] = await AIReasoningEngine.evaluate_signal(result)
+                
+                formatted = TelegramBot.format_signal(result)
+                await message.reply(formatted, parse_mode=ParseMode.HTML)
+                return
+            else:
+                # If it looked like a signal (multi-line) but parsing failed
+                if len(text.split('\n')) >= 3 and any(k in text.upper() for k in ["ENTRY", "TP", "SL", "TARGET"]):
+                    await message.reply("❌ <b>Signal Parsing Failed</b>\n\nPlease ensure your signal follows the format:\n<code>SYMBOL DIRECTION\nEntry: X\nTargets: Y\nSL: Z</code>", parse_mode=ParseMode.HTML)
+                    return
+
+        # 2. Then check for Natural Language commands (e.g. "analyze btc")
         nl = TelegramBot.parse_natural_language(text)
         if nl:
             if nl[0] == "analyze":
@@ -625,51 +669,9 @@ async def handle_signal_input(message: Message):
                 await cmd_strategy(message)
                 return
         
-        # Parse signal format
-        # Relaxed check: at least 3 lines or enough keywords
-        if len(text.split('\n')) < 2 and not any(k in text.upper() for k in ["BUY", "SELL", "LONG", "SHORT", "TP", "SL"]):
-            return  # Probably just a chat message
-        
-        # Parse signal format using robust parser
-        parsed = signal_parser.parse(text)
-        if not parsed:
-            # Check if it was an attempt at a command that we should help with
-            if len(text.split()) == 1 and len(text) < 10:
-                await message.reply(f"I didn't recognize that signal. If you want to analyze {text.upper()}, use <code>/analyze {text.upper()}</code>", parse_mode=ParseMode.HTML)
-            else:
-                # If it looks like a signal but parsing failed, let the user know
-                if any(k in text.upper() for k in ["ENTRY", "TP", "SL", "TARGET"]):
-                    await message.reply("❌ <b>Signal Parsing Failed</b>\n\nPlease ensure your signal follows the format:\n<code>SYMBOL DIRECTION\nEntry: X\nTargets: Y\nSL: Z</code>", parse_mode=ParseMode.HTML)
-            return
-            
-        symbol = TelegramBot.normalize_symbol(parsed['symbol'])
-        direction = parsed['direction']
-        
-        # Get ticker for current price
-        ticker = await market_data_service.get_ticker(symbol)
-        if not ticker:
-            await message.reply(f"❌ Symbol not found: {symbol}", parse_mode=ParseMode.HTML)
-            return
-        
-        await message.reply("🔄 Checking signal against live institutional data...", parse_mode=ParseMode.HTML)
-        
-        # Verify
-        result = await SignalVerifier.verify_signal(
-            symbol=symbol,
-            direction=direction,
-            entry_price=parsed['entry_price'],
-            entry_zone_low=parsed['entry_price'] * 0.995,
-            entry_zone_high=parsed['entry_price'] * 1.005,
-            targets=parsed['targets'],
-            stop_loss=parsed['stop_loss'],
-            current_price=ticker['last'],
-            timeframe='4h'
-        )
-        
-        result['ai_reasoning'] = await AIReasoningEngine.evaluate_signal(result)
-        
-        formatted = TelegramBot.format_signal(result)
-        await message.reply(formatted, parse_mode=ParseMode.HTML)
+        # 3. Last resort: check if it's just a single word coin name
+        if len(text.split()) == 1 and len(text) < 10 and text.isalnum():
+             await message.reply(f"I didn't recognize that signal. If you want to analyze {text.upper()}, use <code>/analyze {text.upper()}</code>", parse_mode=ParseMode.HTML)
     
     except Exception as e:
         logger.error(f"Signal parsing error: {str(e)}")
