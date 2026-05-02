@@ -191,13 +191,12 @@ class MarketDataService:
             return []
     
     async def get_ticker(self, symbol: str) -> Optional[Dict]:
-        """Get current ticker information with CoinGecko fallback"""
+        """Get current ticker information with KuCoin/CoinGecko fallback"""
         symbol = self._normalize_symbol(symbol)
-        if self.is_restricted:
-            return await self._get_ticker_coingecko(symbol)
+        exchange_to_use = self.kucoin_fallback if self.is_restricted else self.exchange
             
         try:
-            ticker = await self._with_retries(partial(self.exchange.fetch_ticker, symbol))
+            ticker = await self._with_retries(partial(exchange_to_use.fetch_ticker, symbol))
             
             return {
                 'symbol': ticker['symbol'],

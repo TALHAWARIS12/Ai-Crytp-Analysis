@@ -764,7 +764,9 @@ async def handle_signal_input(message: Message):
              await message.reply(f"I didn't recognize that signal. If you want to analyze {text.upper()}, use <code>/analyze {text.upper()}</code>", parse_mode=ParseMode.HTML)
     
     except Exception as e:
+        import html
         logger.error(f"Signal parsing error: {str(e)}")
+        await message.reply(f"❌ Error processing signal: {html.escape(str(e))}", parse_mode=ParseMode.HTML)
 
 async def _test_bot_connection(test_bot) -> bool:
     """Quick connectivity test — try get_me() with 10s timeout"""
@@ -824,6 +826,8 @@ async def run_bot():
     for attempt in range(1, max_retries + 1):
         try:
             logger.info(f"Starting polling (attempt {attempt}/{max_retries})...")
+            # Forcefully close any other instances
+            await bot.delete_webhook(drop_pending_updates=True)
             await dp.start_polling(bot, timeout=60)
             break  # Clean exit
             
