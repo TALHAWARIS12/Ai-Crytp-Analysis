@@ -183,6 +183,7 @@ class StrategyValidator:
             status = StrategyStatus.AVOID_ENTRY
         
         return {
+            'symbol': symbol,
             'status': status.value,
             'confidence': round(confidence, 1),
             'score': round(score, 1),

@@ -100,6 +100,8 @@ class SignalParser:
             
         except Exception as e:
             logger.error(f"SignalParser error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
 
 signal_parser = SignalParser()

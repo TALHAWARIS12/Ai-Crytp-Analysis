@@ -516,7 +516,9 @@ async def cmd_analyze(message: Message):
         await message.reply(result, parse_mode=ParseMode.HTML)
     
     except Exception as e:
-        logger.error(f"Analyze error: {str(e)}")
+        logger.error(f"SignalParser error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         await message.reply(f"❌ Error: {str(e)}", parse_mode=ParseMode.HTML)
 
 @router.message(Command("strategy"))
@@ -623,6 +625,10 @@ async def handle_signal_input(message: Message):
             # Check if it was an attempt at a command that we should help with
             if len(text.split()) == 1 and len(text) < 10:
                 await message.reply(f"I didn't recognize that signal. If you want to analyze {text.upper()}, use <code>/analyze {text.upper()}</code>", parse_mode=ParseMode.HTML)
+            else:
+                # If it looks like a signal but parsing failed, let the user know
+                if any(k in text.upper() for k in ["ENTRY", "TP", "SL", "TARGET"]):
+                    await message.reply("❌ <b>Signal Parsing Failed</b>\n\nPlease ensure your signal follows the format:\n<code>SYMBOL DIRECTION\nEntry: X\nTargets: Y\nSL: Z</code>", parse_mode=ParseMode.HTML)
             return
             
         symbol = TelegramBot.normalize_symbol(parsed['symbol'])
