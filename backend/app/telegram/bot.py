@@ -219,13 +219,13 @@ class TelegramBot:
 ────────────────────
 {status_emoji} <b>STATUS: {status}</b>
 ⚖ <b>RR Ratio:</b> {data.get('rr_ratio', 'N/A')}:1
-📊 <b>Risk Score:</b> {data['risk_score']:.0f}%
+📊 <b>Risk Score:</b> {data.get('risk_score', 100):.0f}%
 📈 <b>Trend:</b> {data.get('trend_alignment', 'N/A')}
 
 🛠 <b>TRADE PARAMETERS:</b>
-• <b>Direction:</b> {data['direction']}
-• <b>Entry:</b> {TelegramBot.format_price(data['entry_price'])}
-• <b>Stop Loss:</b> {TelegramBot.format_price(data['stop_loss'])}
+• <b>Direction:</b> {data.get('direction', 'Unknown')}
+• <b>Entry:</b> {TelegramBot.format_price(data.get('entry_price'))}
+• <b>Stop Loss:</b> {TelegramBot.format_price(data.get('stop_loss'))}
 • <b>Targets:</b> {', '.join(TelegramBot.format_price(t) for t in data.get('targets', []))}
 
 💡 <b>TAKE PROFIT TARGETS:</b>
@@ -750,13 +750,13 @@ async def handle_signal_input(message: Message):
         nl = TelegramBot.parse_natural_language(text)
         if nl:
             if nl[0] == "analyze":
-                message.text = f"/analyze {nl[1]}"
-                await cmd_analyze(message)
+                new_msg = message.model_copy(update={"text": f"/analyze {nl[1]}"})
+                await cmd_analyze(new_msg)
                 return
             if nl[0] == "strategy":
                 _, symbol, direction, timeframe = nl
-                message.text = f"/strategy {symbol} {direction} {timeframe}"
-                await cmd_strategy(message)
+                new_msg = message.model_copy(update={"text": f"/strategy {symbol} {direction} {timeframe}"})
+                await cmd_strategy(new_msg)
                 return
         
         # 3. Last resort: check if it's just a single word coin name
