@@ -115,49 +115,46 @@ class TelegramBot:
         mtf = data.get('mtf', {})
         indicators = data.get('indicators', {})
         
-        msg = f"""
-🏛 <b>INSTITUTIONAL ANALYSIS: {data['symbol']}</b>
-────────────────────
-💰 <b>PRICE:</b> {TelegramBot.format_price(data['current_price'])}
-🎯 <b>FINAL DECISION: {data['judgment']}</b>
-
-📊 <b>TECHNICAL INDICATORS:</b>
-• <b>EMA 8/34:</b> {TelegramBot.format_price(indicators.get('ema8', 0))} / {TelegramBot.format_price(indicators.get('ema34', 0))}
-• <b>RSI (14):</b> {indicators.get('rsi', 'N/A')}
-• <b>MA 50/200:</b> {TelegramBot.format_price(indicators.get('sma50', 0))} / {TelegramBot.format_price(indicators.get('sma200', 0))}
-
-⏱ <b>MULTI-TIMEFRAME ANALYSIS:</b>"""
+        # Start message construction
+        msg = f"🏛 <b>INSTITUTIONAL ANALYSIS: {data.get('symbol', 'Unknown')}</b>\n"
+        msg += "────────────────────\n"
+        msg += f"💰 <b>PRICE:</b> {TelegramBot.format_price(data.get('current_price', 0))}\n"
+        msg += f"🎯 <b>FINAL DECISION: {data.get('judgment', 'WAIT')}</b>\n\n"
+        
+        msg += "📊 <b>TECHNICAL INDICATORS:</b>\n"
+        msg += f"• <b>EMA 8/34:</b> {TelegramBot.format_price(indicators.get('ema8', 0))} / {TelegramBot.format_price(indicators.get('ema34', 0))}\n"
+        msg += f"• <b>RSI (14):</b> {indicators.get('rsi', 'N/A')}\n"
+        msg += f"• <b>MA 50/200:</b> {TelegramBot.format_price(indicators.get('sma50', 0))} / {TelegramBot.format_price(indicators.get('sma200', 0))}\n\n"
+        
+        msg += "⏱ <b>MULTI-TIMEFRAME ANALYSIS:</b>"
         for tf in ['4h', '1h', '30m', '15m']:
             tf_data = mtf.get(tf, {})
             if tf_data:
                 choch_str = f" | CHoCH: {tf_data.get('choch_type')}" if tf_data.get('choch_type') else ""
                 msg += f"\n• <b>{tf.upper()}</b>: {tf_data.get('trend')} | Struct: {tf_data.get('structure')} | {tf_data.get('bos')}{choch_str}"
 
-        msg += f"""
+        msg += "\n\n🧱 <b>SUPPORT & RESISTANCE:</b>\n"
+        msg += f"🔴 <b>Strong Res:</b> {', '.join(TelegramBot.format_price(r) for r in sr.get('strong_resistance', [])[:2]) if sr.get('strong_resistance') else 'N/A'}\n"
+        msg += f"🔸 <b>Weak Res:</b> {', '.join(TelegramBot.format_price(r) for r in sr.get('weak_resistance', [])[:2]) if sr.get('weak_resistance') else 'N/A'}\n"
+        msg += f"🟢 <b>Strong Sup:</b> {', '.join(TelegramBot.format_price(s) for s in sr.get('strong_support', [])[:2]) if sr.get('strong_support') else 'N/A'}\n"
+        msg += f"🔹 <b>Weak Sup:</b> {', '.join(TelegramBot.format_price(s) for s in sr.get('weak_support', [])[:2]) if sr.get('weak_support') else 'N/A'}\n\n"
 
-🧱 <b>SUPPORT & RESISTANCE:</b>
-🔴 <b>Strong Res:</b> {', '.join(TelegramBot.format_price(r) for r in sr.get('strong_resistance', [])[:2]) if sr.get('strong_resistance') else 'N/A'}
-🔸 <b>Weak Res:</b> {', '.join(TelegramBot.format_price(r) for r in sr.get('weak_resistance', [])[:2]) if sr.get('weak_resistance') else 'N/A'}
-🟢 <b>Strong Sup:</b> {', '.join(TelegramBot.format_price(s) for s in sr.get('strong_support', [])[:2]) if sr.get('strong_support') else 'N/A'}
-🔹 <b>Weak Sup:</b> {', '.join(TelegramBot.format_price(s) for s in sr.get('weak_support', [])[:2]) if sr.get('weak_support') else 'N/A'}
+        msg += "💧 <b>LIQUIDITY ZONES:</b>\n"
+        msg += f"• <b>Buy-side:</b> {', '.join(liquidity.get('buy_side', [])) if liquidity.get('buy_side') else 'None detected'}\n"
+        msg += f"• <b>Sell-side:</b> {', '.join(liquidity.get('sell_side', [])) if liquidity.get('sell_side') else 'None detected'}\n\n"
 
-💧 <b>LIQUIDITY ZONES:</b>
-• <b>Buy-side:</b> {', '.join(liquidity.get('buy_side', []))}
-• <b>Sell-side:</b> {', '.join(liquidity.get('sell_side', []))}
+        msg += "📊 <b>VOLUME ANALYSIS:</b>\n"
+        msg += f"• {volume.get('message', 'N/A')}\n\n"
 
-📊 <b>VOLUME ANALYSIS:</b>
-• {volume.get('message', 'N/A')}
+        msg += "🌊 <b>ORDER FLOW:</b>\n"
+        msg += f"• <b>Imbalance:</b> {order_flow.get('imbalance', 'N/A')}\n"
+        msg += f"• <b>Strong Bids:</b> {', '.join(TelegramBot.format_price(b) for b in order_flow.get('strong_bids', [])[:2]) if order_flow.get('strong_bids') else 'None'}\n"
+        msg += f"• <b>Heavy Asks:</b> {', '.join(TelegramBot.format_price(a) for a in order_flow.get('heavy_asks', [])[:2]) if order_flow.get('heavy_asks') else 'None'}\n\n"
 
-🌊 <b>ORDER FLOW:</b>
-• <b>Imbalance:</b> {order_flow.get('imbalance', 'N/A')}
-• <b>Strong Bids:</b> {', '.join(TelegramBot.format_price(b) for b in order_flow.get('strong_bids', [])[:2]) if order_flow.get('strong_bids') else 'None'}
-• <b>Heavy Asks:</b> {', '.join(TelegramBot.format_price(a) for a in order_flow.get('heavy_asks', [])[:2]) if order_flow.get('heavy_asks') else 'None'}
-
-🧠 <b>AI REASONING:</b>
-{data.get('analysis', 'Analysis unavailable')}
-────────────────────
-<i>Powered by AI Trading Assistant</i>
-        """
+        msg += "🧠 <b>AI REASONING:</b>\n"
+        msg += f"{data.get('analysis', 'Analysis unavailable')}\n"
+        msg += "────────────────────\n"
+        msg += "<i>Powered by AI Trading Assistant</i>"
         return msg.strip()
     
     @staticmethod
@@ -170,47 +167,43 @@ class TelegramBot:
         liquidity = data.get('liquidity', {})
         indicators = data.get('indicators', {})
         
-        msg = f"""
-🛡 <b>STRATEGY REPORT: {data.get('symbol', 'Unknown')}</b>
-────────────────────
-💰 <b>PRICE:</b> {TelegramBot.format_price(data.get('current_price', 0))}
-{emoji} <b>DECISION: {status}</b>
-
-📊 <b>TECHNICAL INDICATORS:</b>
-• <b>EMA 8/34:</b> {TelegramBot.format_price(indicators.get('ema8', 0))} / {TelegramBot.format_price(indicators.get('ema34', 0))}
-• <b>RSI (14):</b> {indicators.get('rsi', 'N/A')}
-• <b>MA 50/200:</b> {TelegramBot.format_price(indicators.get('sma50', 0))} / {TelegramBot.format_price(indicators.get('sma200', 0))}
-
-⏱ <b>MULTI-TIMEFRAME ANALYSIS:</b>"""
+        msg = f"🛡 <b>STRATEGY REPORT: {data.get('symbol', 'Unknown')}</b>\n"
+        msg += "────────────────────\n"
+        msg += f"💰 <b>PRICE:</b> {TelegramBot.format_price(data.get('current_price', 0))}\n"
+        msg += f"{emoji} <b>DECISION: {status}</b>\n\n"
+        
+        msg += "📊 <b>TECHNICAL INDICATORS:</b>\n"
+        msg += f"• <b>EMA 8/34:</b> {TelegramBot.format_price(indicators.get('ema8', 0))} / {TelegramBot.format_price(indicators.get('ema34', 0))}\n"
+        msg += f"• <b>RSI (14):</b> {indicators.get('rsi', 'N/A')}\n"
+        msg += f"• <b>MA 50/200:</b> {TelegramBot.format_price(indicators.get('sma50', 0))} / {TelegramBot.format_price(indicators.get('sma200', 0))}\n\n"
+        
+        msg += "⏱ <b>MULTI-TIMEFRAME ANALYSIS:</b>"
         for tf in ['4h', '1h', '30m', '15m']:
             tf_data = mtf.get(tf, {})
             if tf_data:
                 choch_str = f" | CHoCH: {tf_data.get('choch_type')}" if tf_data.get('choch_type') else ""
                 msg += f"\n• <b>{tf.upper()}</b>: {tf_data.get('trend')} | Struct: {tf_data.get('structure')} | {tf_data.get('bos')}{choch_str}"
 
-        msg += f"""
+        msg += "\n\n📝 <b>STRATEGY CHECKLIST:</b>\n"
+        msg += f"{chr(10).join('• ' + r for r in data.get('reasons', [])[:5])}\n\n"
 
-📝 <b>STRATEGY CHECKLIST:</b>
-{chr(10).join("• " + r for r in data.get('reasons', [])[:5])}
+        msg += "📉 <b>SETUP ZONES:</b>\n"
+        msg += f"• <b>Entry:</b> {TelegramBot.format_price(((data.get('entry_zones') or {}).get('primary_zone') or {}).get('low', 0)) if isinstance((data.get('entry_zones') or {}).get('primary_zone'), dict) else 'N/A'}\n"
+        msg += f"• <b>Take Profit:</b> {TelegramBot.format_price((data.get('exit_zones') or {}).get('take_profit', 0)) if isinstance(data.get('exit_zones'), dict) else 'N/A'}\n"
+        msg += f"• <b>Stop Loss:</b> {TelegramBot.format_price((data.get('exit_zones') or {}).get('stop_loss', 0)) if isinstance(data.get('exit_zones'), dict) else 'N/A'}\n\n"
 
-📉 <b>SETUP ZONES:</b>
-• <b>Entry:</b> {TelegramBot.format_price(((data.get('entry_zones') or {}).get('primary_zone') or {}).get('low', 0)) if isinstance((data.get('entry_zones') or {}).get('primary_zone'), dict) else 'N/A'}
-• <b>Take Profit:</b> {TelegramBot.format_price((data.get('exit_zones') or {}).get('take_profit', 0)) if isinstance(data.get('exit_zones'), dict) else 'N/A'}
-• <b>Stop Loss:</b> {TelegramBot.format_price((data.get('exit_zones') or {}).get('stop_loss', 0)) if isinstance(data.get('exit_zones'), dict) else 'N/A'}
+        msg += "🧱 <b>SUPPORT & RESISTANCE:</b>\n"
+        msg += f"🟢 <b>Support:</b> {', '.join(TelegramBot.format_price(s) for s in sr.get('strong_support', [])[:2]) if sr.get('strong_support') else 'N/A'}\n"
+        msg += f"🔴 <b>Resistance:</b> {', '.join(TelegramBot.format_price(r) for r in sr.get('strong_resistance', [])[:2]) if sr.get('strong_resistance') else 'N/A'}\n\n"
 
-🧱 <b>SUPPORT & RESISTANCE:</b>
-🟢 <b>Support:</b> {', '.join(TelegramBot.format_price(s) for s in sr.get('strong_support', [])[:2]) if sr.get('strong_support') else 'N/A'}
-🔴 <b>Resistance:</b> {', '.join(TelegramBot.format_price(r) for r in sr.get('strong_resistance', [])[:2]) if sr.get('strong_resistance') else 'N/A'}
+        msg += "💧 <b>LIQUIDITY ZONES:</b>\n"
+        msg += f"• <b>Buy-side:</b> {', '.join(liquidity.get('buy_side', [])) if liquidity.get('buy_side') else 'None detected'}\n"
+        msg += f"• <b>Sell-side:</b> {', '.join(liquidity.get('sell_side', [])) if liquidity.get('sell_side') else 'None detected'}\n\n"
 
-💧 <b>LIQUIDITY ZONES:</b>
-• <b>Buy-side:</b> {', '.join(liquidity.get('buy_side', [])) if liquidity.get('buy_side') else 'None detected'}
-• <b>Sell-side:</b> {', '.join(liquidity.get('sell_side', [])) if liquidity.get('sell_side') else 'None detected'}
-
-🧠 <b>EXPERT VIEW:</b>
-{data.get('ai_reasoning', 'Reasoning unavailable')}
-────────────────────
-<i>Powered by AI Trading Assistant</i>
-        """
+        msg += "🧠 <b>EXPERT VIEW:</b>\n"
+        msg += f"{data.get('ai_reasoning', 'Reasoning unavailable')}\n"
+        msg += "────────────────────\n"
+        msg += "<i>Powered by AI Trading Assistant</i>"
         return msg.strip()
     
     @staticmethod
@@ -590,6 +583,8 @@ async def cmd_strategy(message: Message):
         if direction not in ['LONG', 'SHORT']:
             await message.reply("Direction must be LONG or SHORT", parse_mode=ParseMode.HTML)
             return
+            
+        await message.reply(f"🔄 Validating {symbol} {direction} strategy...", parse_mode=ParseMode.HTML)
         
         # ── Step 1: Perform Full Institutional Analysis ──
         market_data = await market_data_service.get_full_market_snapshot(symbol)
@@ -604,7 +599,7 @@ async def cmd_strategy(message: Message):
         # Prepare full analysis data
         analysis_data = {
             'symbol': symbol,
-            'current_price': market_data['ticker']['last'] if market_data.get('ticker') else 0,
+            'current_price': market_data['ticker']['last'] if (market_data.get('ticker') and market_data['ticker'].get('last')) else (mtf_data.get('4h', [{}])[-1].get('close', 0) if mtf_data.get('4h') else 0),
             'funding_rate': market_data['funding_rate'],
             'mtf': {},
             'indicators': {},

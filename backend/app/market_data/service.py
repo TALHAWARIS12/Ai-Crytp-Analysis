@@ -275,8 +275,13 @@ class MarketDataService:
                 'DOGE/USDT': 'dogecoin',
                 'MATIC/USDT': 'matic-network',
                 'BNB/USDT': 'binancecoin',
+                'RARE/USDT': 'superrare',
+                'NEIRO/USDT': 'neiro',
+                'PEPE/USDT': 'pepe',
+                'SHIB/USDT': 'shiba-inu',
                 'BTC': 'bitcoin',
-                'ETH': 'ethereum'
+                'ETH': 'ethereum',
+                'RARE': 'superrare'
             }
             
             coin_id = coingecko_ids.get(symbol)
@@ -467,7 +472,8 @@ class MarketDataService:
         if self.is_restricted:
             try:
                 await self._with_retries(self.kucoin_fallback.load_markets)
-                return symbol in self.kucoin_fallback.symbols
+                kucoin_symbol = symbol.replace('/', '-')
+                return symbol in self.kucoin_fallback.symbols or kucoin_symbol in self.kucoin_fallback.symbols
             except:
                 return True # Optimistic fallback
                 
