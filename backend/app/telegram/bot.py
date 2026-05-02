@@ -4,6 +4,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 from aiogram.enums import ParseMode
 import asyncio
+import html
 from datetime import datetime
 import re
 
@@ -96,14 +97,16 @@ class TelegramBot:
     """Premium Telegram bot interface for trading assistant"""
     
     @staticmethod
-    def format_price(value: float) -> str:
+    def format_price(value: any) -> str:
         """Format price for readability"""
+        if value is None or not isinstance(value, (int, float)):
+            return "N/A"
         if value < 1:
             return f"${value:.6f}"
         elif value < 100:
-            return f"${value:.2f}"
+            return f"${value:.4f}"
         else:
-            return f"${value:,.0f}"
+            return f"${value:,.2f}"
     
     @staticmethod
     def format_analysis(data: dict) -> str:
@@ -331,7 +334,7 @@ async def cmd_topgainers(message: Message):
         await message.reply(msg, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Top gainers error: {str(e)}")
-        await message.reply("❌ Error fetching top gainers.", parse_mode=ParseMode.HTML)
+        await message.reply(f"❌ Error fetching top gainers: {html.escape(str(e))}", parse_mode=ParseMode.HTML)
 
 @router.message(Command("feargreed"))
 async def cmd_feargreed(message: Message):
@@ -351,7 +354,7 @@ async def cmd_feargreed(message: Message):
             await message.reply("❌ Error fetching Fear & Greed index.", parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"FearGreed error: {str(e)}")
-        await message.reply("❌ Error fetching index.", parse_mode=ParseMode.HTML)
+        await message.reply(f"❌ Error fetching index: {html.escape(str(e))}", parse_mode=ParseMode.HTML)
 
 @router.message(Command("ema"))
 async def cmd_ema(message: Message):
@@ -389,7 +392,7 @@ MA 200: {TelegramBot.format_price(sma200[-1]) if sma200[-1] else 'N/A'}
         await message.reply(msg, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"EMA error: {str(e)}")
-        await message.reply("❌ Error calculating EMA.", parse_mode=ParseMode.HTML)
+        await message.reply(f"❌ Error calculating EMA: {html.escape(str(e))}", parse_mode=ParseMode.HTML)
 
 @router.message(Command("signalcheck"))
 async def cmd_signalcheck(message: Message):
@@ -557,10 +560,8 @@ async def cmd_analyze(message: Message):
         await message.reply(result, parse_mode=ParseMode.HTML)
     
     except Exception as e:
-        logger.error(f"SignalParser error: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        await message.reply(f"❌ Error: {str(e)}", parse_mode=ParseMode.HTML)
+        logger.error(f"Analyze error: {e}")
+        await message.reply(f"❌ Error: {html.escape(str(e))}", parse_mode=ParseMode.HTML)
 
 @router.message(Command("strategy"))
 async def cmd_strategy(message: Message):
@@ -669,7 +670,7 @@ async def cmd_strategy(message: Message):
     
     except Exception as e:
         logger.error(f"Strategy error: {str(e)}")
-        await message.reply(f"❌ Error: {str(e)}", parse_mode=ParseMode.HTML)
+        await message.reply(f"❌ Error: {html.escape(str(e))}", parse_mode=ParseMode.HTML)
 
 @router.message(Command("checksignal"))
 async def cmd_checksignal(message: Message):

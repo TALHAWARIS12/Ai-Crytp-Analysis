@@ -173,11 +173,11 @@ Be professional and direct."""
         if is_gemini and not model.startswith("models/"):
             # Ensure we use a valid model like models/gemini-1.5-flash-latest
             if "flash" in model.lower():
-                model = "models/gemini-1.5-flash-latest"
+                model = "models/gemini-1.5-flash"
             elif "pro" in model.lower():
-                model = "models/gemini-1.5-pro-latest"
+                model = "models/gemini-1.5-pro"
             else:
-                model = "models/gemini-1.5-flash-latest" # Default to flash
+                model = "models/gemini-1.5-flash" # Default to flash
                 
         if is_groq:
             endpoint = "https://api.groq.com/openai/v1/chat/completions"
