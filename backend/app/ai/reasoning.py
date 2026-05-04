@@ -169,15 +169,15 @@ Be professional and direct."""
         is_groq = settings.grok_api_key.startswith("gsk_")
         is_gemini = "gemini" in model.lower() or not (is_groq or settings.grok_api_key.startswith("xai-"))
         
-        # Override model name for Gemini if it's just 'gemini-1.5-flash' etc.
+        # Override model name for Gemini if it's just 'gemini-2.5-flash' etc.
         if is_gemini and not model.startswith("models/"):
-            # Ensure we use a valid model like models/gemini-1.5-flash-latest
+            # Ensure we use a valid model like models/gemini-2.5-flash
             if "flash" in model.lower():
-                model = "models/gemini-1.5-flash"
+                model = "models/gemini-2.5-flash"
             elif "pro" in model.lower():
-                model = "models/gemini-1.5-pro"
+                model = "models/gemini-2.5-pro"
             else:
-                model = "models/gemini-1.5-flash" # Default to flash
+                model = "models/gemini-2.5-flash" # Default to flash
                 
         if is_groq:
             endpoint = "https://api.groq.com/openai/v1/chat/completions"
